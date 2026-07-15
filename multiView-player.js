@@ -2068,6 +2068,10 @@
             }
             cell.remove();
         }
+
+        // Re-run layout now that removed cells are actually gone, so the
+        // remaining ones expand to fill the gaps instead of leaving them.
+        detectAndApplyOrientation();
     }
 
     function applyQualityToAllCells() {
