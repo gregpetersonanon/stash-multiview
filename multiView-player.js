@@ -606,7 +606,7 @@
         for (const entry of streamList) {
             const label = (entry.label || '').toLowerCase();
             const isWebm = (entry.mime_type || '').includes('webm');
-            
+
             const is1080 = label.includes('1080');
             const is720 = label.includes('720');
             const is480 = label.includes('480');
@@ -2082,6 +2082,9 @@
         }
 
         refreshPlayPauseAllBtn();
+        // Re-run layout now that removed cells are actually gone, so the
+        // remaining ones expand to fill the gaps instead of leaving them.
+        detectAndApplyOrientation();
     }
 
     function applyQualityToAllCells() {
