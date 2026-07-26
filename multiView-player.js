@@ -2331,12 +2331,23 @@
             // Loop range drawn over the track, with a draggable mark at each end.
             const loopRegion = document.createElement('div');
             loopRegion.className = 'mv-loop-region';
+            const loopFill = document.createElement('div');
+            loopFill.className = 'mv-loop-progress';
+            loopRegion.appendChild(loopFill);
             const handleA = document.createElement('span');
             handleA.className = 'mv-loop-handle is-a';
             const handleB = document.createElement('span');
             handleB.className = 'mv-loop-handle is-b';
             loopRegion.append(handleA, handleB);
             seekbar.appendChild(loopRegion);
+
+            // How far through the loop we are, as a fraction of the band.
+            const paintLoopProgress = (l) => {
+                if (!l) return;
+                const span = l.b - l.a;
+                const frac = span > 0 ? (effectivePlayhead(video, id) - l.a) / span : 0;
+                loopFill.style.transform = 'scaleX(' + Math.max(0, Math.min(1, frac)) + ')';
+            };
 
             // Repaint the loop chrome. `preview` overrides the stored loop while
             // a mark is being dragged.
@@ -2348,6 +2359,7 @@
                     loopRegion.style.display = 'block';
                     loopRegion.style.left = (100 * Math.max(0, Math.min(1, l.a / duration))) + '%';
                     loopRegion.style.width = (100 * Math.max(0, Math.min(1, (l.b - l.a) / duration))) + '%';
+                    paintLoopProgress(l);
                 } else {
                     loopRegion.style.display = 'none';
                 }
@@ -2404,6 +2416,7 @@
                 if (activeSeek && activeSeek.id === id) return;
                 const duration = scenes[id]?.duration || (isFinite(video.duration) ? video.duration : null);
                 if (duration) seekFill.style.transform = 'scaleX(' + (effectivePlayhead(video, id) / duration) + ')';
+                if (!activeLoopDrag || activeLoopDrag.id !== id) paintLoopProgress(isFilterBacked ? null : getLoop(id));
             };
 
             video.addEventListener('timeupdate', () => {

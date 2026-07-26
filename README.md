@@ -116,7 +116,7 @@ Set a range in either of two ways:
 
 Once a range is set:
 
-- The looping stretch is lit up on the cell's seekbar, with a **draggable mark at each end** so you can nudge the range while it plays
+- The cell's seekbar re-centres on the loop: the looped stretch is drawn in the accent colour with a **draggable mark at each end** so you can nudge the range while it plays, the brighter part of it shows how far through the loop you are, and everything outside the range dims out of the way
 - The range is shown as `0:41 - 1:12` next to the cell controls
 - The cell restarts from **A** every time it reaches **B**, forever, independent of every other cell
 - Only marking **A** loops from there to the end of the scene, so you can set a start and refine the end later
