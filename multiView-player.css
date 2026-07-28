@@ -880,6 +880,20 @@ body.mv-idle .mv-cell:hover:not(.mv-popup-open) .mv-seekbar {
 
 .mv-quality-select:hover { border-color: #555; }
 .mv-quality-select:disabled { opacity: 0.4; cursor: default; }
+.mv-quality-select option:disabled { color: #666; }
+
+.mv-seek-step-input {
+    width: 84px;
+    background: #1b1b1b;
+    color: #ddd;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-family: inherit;
+}
+.mv-seek-step-input:hover { border-color: #555; }
+.mv-seek-step-input:focus { outline: none; border-color: var(--mv-accent); }
 
 .mv-keybind-btn {
     min-width: 70px;
