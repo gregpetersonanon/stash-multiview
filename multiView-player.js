@@ -42,6 +42,12 @@
     // the last few seconds is pointless. Start fresh instead.
     const PROGRESS_END_MARGIN = 10;
 
+    // How close to the bottom of a cell the pointer has to be for that cell to
+    // enter its "seek zone" (bar grows, controls lift, time readout appears).
+    // Measured in JS because the overlay covers the bar's hit strip; see the
+    // .mv-seek-zone rules in the stylesheet for why :hover cannot do this.
+    const SEEK_ZONE_PX = 34;
+
     // A/B loops. Per-scene [A, B] range that a cell replays forever instead of
     // playing the whole scene. Stored per scene id in localStorage, no TTL (a
     // loop is deliberate user work, unlike a resume position), pruned to the
@@ -109,6 +115,11 @@
         let t = video.currentTime;
         if (src.match(/[?&]start=/)) t += (seekBases.get(id) || 0);
         return t;
+    }
+    // Whole-scene length. The element's own duration is only trustworthy when
+    // the src covers the whole scene, so Stash's metadata wins where we have it.
+    function totalDuration(id, video) {
+        return scenes[id]?.duration || (video && isFinite(video.duration) ? video.duration : null);
     }
     // The buffering spinner overlay, idempotent per cell.
     function showSpinner(cell) {
@@ -595,7 +606,7 @@
     }
 
     function applyWheelSeek(id, video, delta) {
-        const duration = scenes[id]?.duration || (isFinite(video.duration) ? video.duration : null);
+        const duration = totalDuration(id, video);
         if (!duration) return;
 
         const currentSrc = video.getAttribute('src');
@@ -1903,6 +1914,67 @@
 
     let activeSeek = null; // { seekbar, fill, video, id, ratio }
 
+    // ── Seek zone ──────────────────────────────────────────────────────────
+    // One cell at a time is "in the zone": pointer near its bottom edge, or the
+    // cell currently being dragged. Reading a rect per mousemove would force a
+    // sync layout on every move, so the work is coalesced to one frame.
+
+    let seekZoneCell = null;
+    let zonePending = null;
+    let zoneRaf = 0;
+
+    function queueSeekZone(e) {
+        zonePending = { target: e.target, x: e.clientX, y: e.clientY };
+        if (zoneRaf) return;
+        zoneRaf = requestAnimationFrame(() => {
+            zoneRaf = 0;
+            const p = zonePending;
+            zonePending = null;
+            if (p) updateSeekZone(p);
+        });
+    }
+
+    function setSeekZoneCell(cell) {
+        if (cell === seekZoneCell) return;
+        if (seekZoneCell) seekZoneCell.classList.remove('mv-seek-zone');
+        seekZoneCell = cell;
+        if (seekZoneCell) seekZoneCell.classList.add('mv-seek-zone');
+    }
+
+    function updateSeekZone(p) {
+        // render() can replace the cell we were holding; drop the detached node.
+        if (seekZoneCell && !seekZoneCell.isConnected) seekZoneCell = null;
+        // A drag owns the zone until it ends, even if the pointer wanders off
+        // the cell (the bar is still what the user is manipulating).
+        const dragging = activeSeek || activeLoopDrag;
+        const cell = dragging
+            ? (activeSeek ? activeSeek.seekbar.closest('.mv-cell') : activeLoopDrag.cell)
+            : (p.target && p.target.closest ? p.target.closest('.mv-cell') : null);
+        if (!cell) { setSeekZoneCell(null); return; }
+
+        const rect = cell.getBoundingClientRect();
+        if (!dragging && p.y < rect.bottom - SEEK_ZONE_PX) { setSeekZoneCell(null); return; }
+        setSeekZoneCell(cell);
+        paintSeekTime(cell, rect, p.x);
+    }
+
+    // The readout tracks the pointer along the bar and reports the time it
+    // would seek to. The bar spans the cell, so the cell rect is the bar rect.
+    function paintSeekTime(cell, rect, x) {
+        const readout = cell.querySelector('.mv-seek-time');
+        if (!readout) return;
+        const id = cell.dataset.sceneId;
+        const video = cell.querySelector('video');
+        const duration = totalDuration(id, video);
+        if (!duration) { readout.textContent = ''; return; }
+        const ratio = Math.max(0, Math.min(1, (x - rect.left) / rect.width));
+        readout.textContent = fmtTime(ratio * duration) + ' / ' + fmtTime(duration);
+        // Cells clip their overflow, so hold the centred bubble far enough in
+        // from either edge that it stays whole at 0% and 100%.
+        const margin = rect.width ? (readout.offsetWidth / 2 + 4) / rect.width : 0;
+        readout.style.left = (100 * Math.max(margin, Math.min(1 - margin, ratio))) + '%';
+    }
+
     function updateSeekFill(e) {
         if (!activeSeek) return;
         const rect = activeSeek.seekbar.getBoundingClientRect();
@@ -1919,7 +1991,7 @@
         // gets two back-to-back src reassignments at the same offset.
         if (activeSeek.lastCommittedRatio === ratio) return;
         activeSeek.lastCommittedRatio = ratio;
-        const duration = scenes[id]?.duration || (isFinite(video.duration) ? video.duration : null);
+        const duration = totalDuration(id, video);
         if (!duration) return;
 
         const targetTime = ratio * duration;
@@ -2102,7 +2174,7 @@
                 lastRecoveryAt = now;
                 const currentSrc = video.getAttribute('src') || '';
                 let t = effectivePlayhead(video, id);
-                const dur = scenes[id]?.duration || (isFinite(video.duration) ? video.duration : null);
+                const dur = totalDuration(id, video);
                 if (dur && t > dur - 0.5) t = Math.max(0, dur - 0.5); // never re-source past EOF
                 if (isTranscodeUrl(currentSrc)) {
                     seekBases.set(id, t);
@@ -2328,6 +2400,11 @@
             seekFill.className = 'mv-seekbar-fill';
             seekbar.appendChild(seekFill);
 
+            // Time under the pointer, filled in by the seek-zone painter.
+            const seekTime = document.createElement('span');
+            seekTime.className = 'mv-seek-time';
+            seekbar.appendChild(seekTime);
+
             // Loop range drawn over the track, with a draggable mark at each end.
             const loopRegion = document.createElement('div');
             loopRegion.className = 'mv-loop-region';
@@ -2414,7 +2491,7 @@
 
             const updateProgress = () => {
                 if (activeSeek && activeSeek.id === id) return;
-                const duration = scenes[id]?.duration || (isFinite(video.duration) ? video.duration : null);
+                const duration = totalDuration(id, video);
                 if (duration) seekFill.style.transform = 'scaleX(' + (effectivePlayhead(video, id) / duration) + ')';
                 if (!activeLoopDrag || activeLoopDrag.id !== id) paintLoopProgress(isFilterBacked ? null : getLoop(id));
             };
@@ -2796,8 +2873,14 @@
             if (playerSettings.focusMode) applyJustifiedLayout();
         });
 
-        document.addEventListener('mousemove', e => { updateSeekFill(e); updateLoopDrag(e); });
-        document.addEventListener('mouseup', () => { commitSeek(); activeSeek = null; commitLoopDrag(); });
+        document.addEventListener('mousemove', e => { updateSeekFill(e); updateLoopDrag(e); queueSeekZone(e); });
+        document.addEventListener('mouseup', e => {
+            commitSeek();
+            activeSeek = null;
+            commitLoopDrag();
+            // The drag was holding the zone open; hand it back to the pointer.
+            queueSeekZone(e);
+        });
 
         // Idle auto-hide: any pointer/keyboard activity keeps the chrome up and
         // re-arms the hide timer; stillness hides it after IDLE_HIDE_MS.
