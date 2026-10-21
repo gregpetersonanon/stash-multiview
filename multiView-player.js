@@ -2360,6 +2360,19 @@
             const cid = cell.dataset.sceneId;
             if (cid && !existing.has(cid)) existing.set(cid, cell); // canonical = first cell per id
         }
+        // A cell is wired as either a pinned or a filter cell when it is built
+        // (looping, `ended` handling, label, loop controls), so one whose scene
+        // has switched kind, e.g. pinned by hand while a filter cell was
+        // showing it, is rebuilt rather than reused. Dropping it from
+        // `existing` makes the pass below create a fresh cell and the cleanup
+        // pass tear this one down. Its gain goes too, or connectAudio would
+        // skip the new video and leave its volume control dead.
+        for (const [cid, cell] of existing) {
+            if (cell.classList.contains('mv-cell--filter') !== filterBackedCells.has(cid)) {
+                existing.delete(cid);
+                disconnectAudio(cid);
+            }
+        }
         const queueSet = new Set(queue);
 
         // Add new cells at their correct queue position (before removal to avoid layout flash)
