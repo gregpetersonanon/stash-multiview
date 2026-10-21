@@ -996,7 +996,7 @@
         swLabel.textContent = 'Scroll-Wheel Seek';
         const swDesc = document.createElement('span');
         swDesc.className = 'mv-settings-dp-desc';
-        swDesc.textContent = 'Scroll the mouse wheel over a video to skip ±5 seconds.';
+        swDesc.textContent = 'Scroll the mouse wheel over a video to skip back or forward by the seek step (set under Seeking).';
         swText.append(swLabel, swDesc);
         const swToggle = document.createElement('input');
         swToggle.type = 'checkbox';
