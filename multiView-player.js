@@ -461,11 +461,11 @@
         return Object.keys(sf).length ? sf : undefined;
     }
 
-    // excludeId: fetch 3 candidates so we can skip the current scene when advancing
-    async function resolveFilterSlot(item, excludeId = null) {
+    // Up to `count` random scene ids matching a filter slot.
+    async function fetchFilterCandidates(item, count) {
         try {
             const f = item.filter || {};
-            const findFilter = { per_page: excludeId ? 3 : 1, sort: 'random' };
+            const findFilter = { per_page: count, sort: 'random' };
             if (f.q) findFilter.q = f.q;
             const res = await fetch('/graphql', {
                 method: 'POST',
@@ -477,26 +477,50 @@
             });
             const data = await res.json();
             const list = data?.data?.findScenes?.scenes || [];
-            const pick = excludeId ? (list.find(s => String(s.id) !== excludeId) || list[0]) : list[0];
-            return pick ? String(pick.id) : null;
-        } catch { return null; }
+            return list.map(s => String(s.id));
+        } catch { return []; }
+    }
+
+    // A grid shows one cell per scene id, so a filter slot must never land on
+    // a scene that is already on screen: the duplicate's cell would vanish
+    // and, if it collided with a pinned scene, take over that cell. `taken`
+    // holds the ids already placed. Asking for taken.size + 1 random matches
+    // guarantees a free one whenever the filter has that many; null means
+    // every match is already showing.
+    async function resolveFilterSlot(item, taken) {
+        const ids = await fetchFilterCandidates(item, taken.size + 1);
+        return ids.find(id => !taken.has(id)) || null;
+    }
+
+    // Place every filter slot on a distinct scene. Candidates are fetched in
+    // parallel, then handed out in queue order. Each slot asks for as many
+    // candidates as the queue has items, so (as above) a free one is always
+    // in its list when the filter has enough matches. A slot with none left
+    // is dropped from the grid.
+    async function assignFilterSlots(rawQueue, taken, preset = []) {
+        const candidates = await Promise.all(rawQueue.map((item, i) =>
+            (typeof item === 'string' || preset[i]) ? null : fetchFilterCandidates(item, rawQueue.length)));
+        return rawQueue.map((item, i) => {
+            if (typeof item === 'string') return item;
+            if (preset[i]) return preset[i];
+            const id = candidates[i].find(c => !taken.has(c)) || null;
+            if (id) taken.add(id);
+            return id;
+        });
     }
 
     async function resolveQueue(rawQueue) {
         filterBackedCells.clear();
-        const resolved = await Promise.all(
-            rawQueue.map(async item => {
-                if (typeof item === 'string') return item;
-                const id = await resolveFilterSlot(item);
-                if (id) filterBackedCells.set(id, item);
-                return id;
-            })
-        );
+        const taken = new Set(rawQueue.filter(item => typeof item === 'string'));
+        const resolved = await assignFilterSlots(rawQueue, taken);
+        resolved.forEach((id, i) => { if (id && typeof rawQueue[i] !== 'string') filterBackedCells.set(id, rawQueue[i]); });
         return resolved.filter(Boolean);
     }
 
     // Like resolveQueue but reuses currently-playing IDs for existing filter slots
     // so adding a scene from Stash doesn't interrupt videos already playing.
+    // Reuse is decided first so new picks can avoid the reused scenes, and a
+    // playing scene that has since been pinned by hand is not reused.
     async function resolveQueuePreserving(rawQueue) {
         const available = new Map();
         for (const [id, item] of filterBackedCells) {
@@ -504,22 +528,19 @@
             if (!available.has(key)) available.set(key, []);
             available.get(key).push(id);
         }
+        const taken = new Set(rawQueue.filter(item => typeof item === 'string'));
+        const reused = rawQueue.map(item => {
+            if (typeof item === 'string') return null;
+            const pool = available.get(JSON.stringify(item.filter || {})) || [];
+            while (pool.length > 0) {
+                const id = pool.shift();
+                if (!taken.has(id)) { taken.add(id); return id; }
+            }
+            return null;
+        });
+        const resolved = await assignFilterSlots(rawQueue, taken, reused);
         const newFilterBackedCells = new Map();
-        const resolved = await Promise.all(
-            rawQueue.map(async item => {
-                if (typeof item === 'string') return item;
-                const key = JSON.stringify(item.filter || {});
-                const pool = available.get(key);
-                if (pool && pool.length > 0) {
-                    const id = pool.shift();
-                    newFilterBackedCells.set(id, item);
-                    return id;
-                }
-                const id = await resolveFilterSlot(item);
-                if (id) newFilterBackedCells.set(id, item);
-                return id;
-            })
-        );
+        resolved.forEach((id, i) => { if (id && typeof rawQueue[i] !== 'string') newFilterBackedCells.set(id, rawQueue[i]); });
         filterBackedCells.clear();
         for (const [k, v] of newFilterBackedCells) filterBackedCells.set(k, v);
         return resolved.filter(Boolean);
@@ -555,8 +576,10 @@
     async function advanceFilterCell(id) {
         const filterItem = filterBackedCells.get(id);
         if (!filterItem) return;
-        const newId = await resolveFilterSlot(filterItem, id);
-        if (!newId || newId === id) {
+        // `queue` includes this cell's own scene, so the pick is always new.
+        // Re-check after the await: another cell may have advanced onto it.
+        const newId = await resolveFilterSlot(filterItem, new Set(queue));
+        if (!newId || queue.includes(newId)) {
             const cell = document.querySelector(`.mv-cell[data-scene-id="${id}"]`);
             const video = cell?.querySelector('video');
             if (video) seekToStart(id, video);
