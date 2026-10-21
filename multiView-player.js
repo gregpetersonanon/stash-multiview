@@ -66,7 +66,7 @@
     const LOOP_RESOURCE_COOLDOWN_MS = 3000;
     const LOOP_MAX_ENTRIES = 500;
 
-    // �"?�"? SVGs �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── SVGs ───────────────────────────────────────────────────────────────
 
     const ICON_VOLUME_ON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512" aria-hidden="true"><path fill="currentColor" d="M533.6 32.5C598.5 85.2 640 165.8 640 256s-41.5 170.7-106.4 223.5c-10.3 8.4-25.4 6.8-33.8-3.5s-6.8-25.4 3.5-33.8C557.5 398.2 592 331.2 592 256s-34.5-142.2-88.7-186.2c-10.3-8.4-11.8-23.5-3.5-33.8s23.5-11.8 33.8-3.5zM473.1 107c43.2 35.2 70.9 88.9 70.9 149s-27.7 113.8-70.9 149c-10.3 8.4-25.4 6.8-33.8-3.5s-6.8-25.4 3.5-33.8C475.3 341.3 496 301.1 496 256s-20.7-85.3-53.2-111.8c-10.3-8.4-11.8-23.5-3.5-33.8s23.5-11.8 33.8-3.5zm-60.5 74.5C434.1 199.1 448 225.9 448 256s-13.9 56.9-35.4 74.5c-10.3 8.4-25.4 6.8-33.8-3.5s-6.8-25.4 3.5-33.8C393.1 284.4 400 271 400 256s-6.9-28.4-17.7-37.3c-10.3-8.4-11.8-23.5-3.5-33.8s23.5-11.8 33.8-3.5zM301.1 34.8C312.6 40 320 51.4 320 64V448c0 12.6-7.4 24-18.9 29.2s-25 3.1-34.4-5.3L131.8 352H64c-35.3 0-64-28.7-64-64V224c0-35.3 28.7-64 64-64h67.8L266.7 40.1c9.4-8.4 22.9-10.7 34.4-5.3z"/></svg>`;
 
@@ -83,14 +83,14 @@
     const ICON_EXPAND = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 10L21 3M21 3H16.5M21 3V7.5M10 14L3 21M3 21H7.5M3 21L3 16.5"/></svg>`;
     const ICON_COMPRESS = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3L14 10M14 10H18.5M14 10V5.5M3 21L10 14M10 14H5.5M10 14V18.5"/></svg>`;
     const ICON_LOOP = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M0 224c0 17.7 14.3 32 32 32s32-14.3 32-32c0-53 43-96 96-96H320v32c0 12.9 7.8 24.6 19.8 29.6s25.7 2.2 34.9-6.9l64-64c12.5-12.5 12.5-32.8 0-45.3l-64-64c-9.2-9.2-22.9-11.9-34.9-6.9S320 19.1 320 32V64H160C71.6 64 0 135.6 0 224zm512 64c0-17.7-14.3-32-32-32s-32 14.3-32 32c0 53-43 96-96 96H192V352c0-12.9-7.8-24.6-19.8-29.6s-25.7-2.2-34.9 6.9l-64 64c-12.5 12.5-12.5 32.8 0 45.3l64 64c9.2 9.2 22.9 11.9 34.9 6.9s19.8-16.6 19.8-29.6V448H352c88.4 0 160-71.6 160-160z"/></svg>`;
-    // �"?�"? State �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── State ──────────────────────────────────────────────────────────────
 
     let queue = [];
-    let scenes = {};         // id ��' { id, title, streams }
+    let scenes = {};         // id → { id, title, streams }
     const unmutedIds = new Set();
     let openPopupId = null;
-    const seekBases = new Map(); // id ��' seconds already consumed before current src load
-    const filterBackedCells = new Map(); // resolved sceneId ��' original filter item
+    const seekBases = new Map(); // id → seconds already consumed before current src load
+    const filterBackedCells = new Map(); // resolved sceneId → original filter item
     // resolved sceneId -> index of its item in the saved queue. The two don't
     // line up by position once a filter slot with no match is left off the
     // grid, and a filter slot has no id to find it by, so removal uses this.
@@ -141,10 +141,10 @@
         cell?.querySelector('.mv-loading')?.remove();
     }
 
-    // �"?�"? Web Audio �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Web Audio ──────────────────────────────────────────────────────────
 
     let audioCtx = null;
-    const cellGains = new Map(); // id ��' GainNode
+    const cellGains = new Map(); // id → GainNode
 
     function getAudioCtx() {
         if (!audioCtx) {
@@ -166,7 +166,7 @@
             gain.connect(ctx.destination);
             cellGains.set(id, gain);
         } catch (e) {
-            // Silently ignore �?" audio still works via video.volume fallback
+            // Silently ignore — audio still works via video.volume fallback
         }
     }
 
@@ -184,7 +184,7 @@
         }
     }
 
-    // �"?�"? Queue �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Queue ──────────────────────────────────────────────────────────────
 
     function getQueue() {
         try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
@@ -628,7 +628,7 @@
         } else {
             video.currentTime = 0;
         }
-        if (wasPlaying || video.autoplay) video.play();
+        if (wasPlaying || video.autoplay) video.play().catch(() => {});
     }
 
     // ── Seek modifiers ─────────────────────────────────────────────────────
@@ -744,7 +744,7 @@
         if (fill) fill.style.transform = 'scaleX(' + (target / duration) + ')';
     }
 
-    // �"?�"? Stream selection �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Stream selection ───────────────────────────────────────────────────
 
     function parseStreams(streamList) {
         const s = {};
@@ -771,7 +771,7 @@
         return s;
     }
 
-    // �"?�"? Settings �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Settings ───────────────────────────────────────────────────────────
 
     const QUALITY_OPTIONS = [
         { value: 'direct',   label: 'Direct Stream' },
@@ -1045,7 +1045,7 @@
         swLabel.textContent = 'Scroll-Wheel Seek';
         const swDesc = document.createElement('span');
         swDesc.className = 'mv-settings-dp-desc';
-        swDesc.textContent = 'Scroll the mouse wheel over a video to skip ±5 seconds.';
+        swDesc.textContent = 'Scroll the mouse wheel over a video to skip back or forward by the seek step (set under Seeking).';
         swText.append(swLabel, swDesc);
         const swToggle = document.createElement('input');
         swToggle.type = 'checkbox';
@@ -1367,7 +1367,7 @@
         document.getElementById('mv-settings-modal')?.remove();
     }
 
-    // �"?�"? Stream selection �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Stream selection ───────────────────────────────────────────────────
 
     function pickStream(id) {
         const s = scenes[id]?.streams;
@@ -1386,7 +1386,7 @@
         return s[preferred] || s['webm' + res] || s['mp4' + res] || direct;
     }
 
-    // �"?�"? GraphQL �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── GraphQL ────────────────────────────────────────────────────────────
 
     async function fetchSceneMeta(id) {
         try {
@@ -1888,7 +1888,7 @@
         applyLoopState(id, video);
     }
 
-    // �"?�"? Layout �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Layout ─────────────────────────────────────────────────────────────
 
     function autoLayout(count, isPortrait = false) {
         if (count <= 1) return '1x1';
@@ -2104,12 +2104,12 @@
         });
     }
 
-    // �"?�"? Play / Pause All �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Play / Pause All ───────────────────────────────────────────────────
 
     function playPauseAll() {
         const videos = [...document.querySelectorAll('.mv-cell video')];
         const anyPlaying = videos.some(v => !v.paused);
-        videos.forEach(v => anyPlaying ? v.pause() : v.play());
+        videos.forEach(v => anyPlaying ? v.pause() : v.play().catch(() => {}));
         // Each video's own 'play'/'pause' listener calls refreshPlayPauseAllBtn,
         // but call it here too so the icon updates even if the grid is empty.
         refreshPlayPauseAllBtn();
@@ -2132,7 +2132,7 @@
         btn.title = playing ? 'Pause All' : 'Play All';
     }
 
-    // �"?�"? Audio mute/unmute �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Audio mute/unmute ──────────────────────────────────────────────────
 
     function applyAudioCell(cell) {
         const id = cell.dataset.sceneId;
@@ -2179,7 +2179,7 @@
         updateMuteAllBtn();
     }
 
-    // �"?�"? Seek �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Seek ───────────────────────────────────────────────────────────────
 
     let activeSeek = null; // { seekbar, fill, video, id, ratio }
 
@@ -2306,7 +2306,7 @@
         }
     }
 
-    // �"?�"? Volume popup �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Volume popup ───────────────────────────────────────────────────────
 
     function closeAllPopups() {
         openPopupId = null;
@@ -2328,7 +2328,7 @@
         if (p) p.classList.add('is-open');
     }
 
-    // �"?�"? Render �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Render ─────────────────────────────────────────────────────────────
 
     function render() {
         const grid = document.getElementById('mv-grid');
@@ -2604,7 +2604,7 @@
             playPauseBtn.title = 'Pause';
             playPauseBtn.addEventListener('click', e => {
                 e.stopPropagation();
-                if (video.paused) { video.play(); }
+                if (video.paused) { video.play().catch(() => {}); }
                 else              { video.pause(); }
             });
             video.addEventListener('pause', () => {
@@ -2965,11 +2965,11 @@
                 video.addEventListener('loadedmetadata', onMeta);
             }
             syncNativeLoop(id, video);
-            if (wasPlaying || video.autoplay) video.play();
+            if (wasPlaying || video.autoplay) video.play().catch(() => {});
         });
     }
 
-    // �"?�"? Cross-tab sync �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Cross-tab sync ─────────────────────────────────────────────────────
 
     // Same-origin cross-tab: the local cache changed in another tab.
     window.addEventListener('storage', e => {
@@ -2991,7 +2991,7 @@
         if (await seedCacheFromConfig()) resyncFromCache();
     });
 
-    // �"?�"? Roulette �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Roulette ───────────────────────────────────────────────────────────
 
     // mode 'replace' (default): the roll overwrites the whole grid with `count`
     // random scenes. mode 'add': append up to `count` random scenes to the
@@ -3047,7 +3047,7 @@
         } catch {}
     }
 
-    // �"?�"? Menu panel �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Menu panel ─────────────────────────────────────────────────────────
 
     function openMenuPanel() {
         if (document.getElementById('mv-menu-panel')) { closeMenuPanel(); return; }
@@ -3151,7 +3151,7 @@
         }
     }
 
-    // �"?�"? Idle auto-hide �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Idle auto-hide ─────────────────────────────────────────────────────
 
     let idleHideTimer = null;
     function markPointerActive() {
@@ -3160,7 +3160,7 @@
         idleHideTimer = setTimeout(() => document.body.classList.add('mv-idle'), IDLE_HIDE_MS);
     }
 
-    // �"?�"? Init �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    // ── Init ───────────────────────────────────────────────────────────────
 
     async function init() {
         const savedSettings = (() => {
