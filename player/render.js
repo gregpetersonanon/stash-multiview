@@ -16,7 +16,13 @@ export function render() {
     const titleEl = document.getElementById('mv-title');
 
     if (queue.length === 0) {
-        grid.innerHTML = '';
+        // Tear each cell down, as the pass below does: clearing the grid's
+        // HTML would leave play tracking unflushed and each scene's gain
+        // registered, so a scene that came back later had a dead volume.
+        for (const cell of Array.from(grid.children)) {
+            if (cell.dataset.sceneId) disconnectAudio(cell.dataset.sceneId);
+            destroyCell(cell);
+        }
         grid.className = 'layout-1x1';
         empty.style.display = 'flex';
         titleEl.textContent = 'Stash Multiview';
