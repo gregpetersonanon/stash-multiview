@@ -1075,12 +1075,29 @@ body.mv-idle .mv-cell:hover:not(.mv-popup-open) .mv-seekbar {
 
 /* ── Focus mode ──────────────────────────────────────────────────────────── */
 
+/* The hidden bar still spans the top 44px of the grid, and an opacity-0
+   element keeps catching the pointer, so reaching for a top-row cell's title
+   revealed the bar on top of it and the link could never be clicked. Let the
+   pointer through while hidden and reveal only from a thin strip at the very
+   top edge (hovering the ::before counts as hovering the bar). The strip is
+   shallower than the overlay's 8px padding, so it never covers a title. */
 body.mv-focus #mv-topbar {
     opacity: 0;
+    pointer-events: none;
     transition: opacity 0.25s;
+}
+body.mv-focus #mv-topbar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    pointer-events: auto;
 }
 body.mv-focus #mv-topbar:hover {
     opacity: 1;
+    pointer-events: auto;
 }
 body.mv-focus #mv-grid {
     top: 0;
