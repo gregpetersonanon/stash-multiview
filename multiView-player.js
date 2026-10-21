@@ -1438,6 +1438,13 @@
         }
     }
 
+    // Bank the session and stop the clock. accumulatePlay alone keeps the
+    // session open, so the periodic flush would go on counting paused time.
+    function endPlaySession(tracker) {
+        accumulatePlay(tracker);
+        tracker.sessionStart = null;
+    }
+
     function flushTracker(tracker) {
         accumulatePlay(tracker);
         if (tracker.accumulated >= 1) {
@@ -1461,8 +1468,8 @@
                 sceneAddPlay(id);
             }
         });
-        video.addEventListener('pause', () => accumulatePlay(tracker));
-        video.addEventListener('ended', () => accumulatePlay(tracker));
+        video.addEventListener('pause', () => endPlaySession(tracker));
+        video.addEventListener('ended', () => endPlaySession(tracker));
 
         if (!activityFlushTimer) {
             activityFlushTimer = setInterval(flushAllTrackers, ACTIVITY_FLUSH_MS);
