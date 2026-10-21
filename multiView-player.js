@@ -580,7 +580,7 @@
         } else {
             video.currentTime = 0;
         }
-        if (wasPlaying || video.autoplay) video.play();
+        if (wasPlaying || video.autoplay) video.play().catch(() => {});
     }
 
     // ── Seek modifiers ─────────────────────────────────────────────────────
@@ -2040,7 +2040,7 @@
     function playPauseAll() {
         const videos = [...document.querySelectorAll('.mv-cell video')];
         const anyPlaying = videos.some(v => !v.paused);
-        videos.forEach(v => anyPlaying ? v.pause() : v.play());
+        videos.forEach(v => anyPlaying ? v.pause() : v.play().catch(() => {}));
         updatePlayPauseAllBtn(!anyPlaying);
     }
 
@@ -2501,7 +2501,7 @@
             playPauseBtn.title = 'Pause';
             playPauseBtn.addEventListener('click', e => {
                 e.stopPropagation();
-                if (video.paused) { video.play(); }
+                if (video.paused) { video.play().catch(() => {}); }
                 else              { video.pause(); }
             });
             video.addEventListener('pause', () => {
@@ -2850,7 +2850,7 @@
                 };
                 video.addEventListener('loadedmetadata', onMeta);
             }
-            if (wasPlaying || video.autoplay) video.play();
+            if (wasPlaying || video.autoplay) video.play().catch(() => {});
         });
     }
 
