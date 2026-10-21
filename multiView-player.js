@@ -577,6 +577,7 @@
         if (isTranscodeUrl(src)) {
             seekBases.set(id, 0);
             video.src = stripStart(src);
+            syncNativeLoop(id, video);
         } else {
             video.currentTime = 0;
         }
@@ -685,6 +686,7 @@
             seekBases.set(id, target);
             showSpinner(document.querySelector(`.mv-cell[data-scene-id="${id}"]`));
             resourceKeepingPlayState(video, withStart(stripStart(currentSrc), target));
+            syncNativeLoop(id, video);
         } else {
             video.currentTime = target;
         }
@@ -1766,6 +1768,16 @@
         }, { once: true });
     }
 
+    // Call after any path that points a cell at a new src. A ?start= reload
+    // only holds [start, end], and a plain cell is natively looped, so without
+    // this it would replay that tail forever instead of the whole scene.
+    // Filter cells advance on `ended` and A/B cells drive their own restarts,
+    // so both are left alone.
+    function syncNativeLoop(id, video) {
+        if (filterBackedCells.has(String(id)) || getLoop(id)) return;
+        applyLoopState(id, video);
+    }
+
     // Bring one cell's playback in line with its loop state right now, after a
     // mark was set, moved or cleared.
     function applyLoopState(id, video) {
@@ -2238,6 +2250,7 @@
             seekBases.set(id, targetTime);
             showSpinner(document.querySelector(`.mv-cell[data-scene-id="${id}"]`));
             resourceKeepingPlayState(video, withStart(stripStart(currentSrc), targetTime));
+            syncNativeLoop(id, video);
         } else {
             video.currentTime = targetTime;
         }
@@ -2414,6 +2427,7 @@
                 if (isTranscodeUrl(currentSrc)) {
                     seekBases.set(id, t);
                     video.src = withStart(stripStart(currentSrc), t);
+                    syncNativeLoop(id, video);
                 } else {
                     video.load();
                     video.addEventListener('loadedmetadata', () => {
@@ -2887,6 +2901,7 @@
                 };
                 video.addEventListener('loadedmetadata', onMeta);
             }
+            syncNativeLoop(id, video);
             if (wasPlaying || video.autoplay) video.play();
         });
     }
