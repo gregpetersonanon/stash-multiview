@@ -91,6 +91,14 @@
     let openPopupId = null;
     const seekBases = new Map(); // id ��' seconds already consumed before current src load
     const filterBackedCells = new Map(); // resolved sceneId ��' original filter item
+    // resolved sceneId -> index of its item in the saved queue. The two don't
+    // line up by position once a filter slot with no match is left off the
+    // grid, and a filter slot has no id to find it by, so removal uses this.
+    const savedQueueIndex = new Map();
+    function indexSavedQueue(resolved) {
+        savedQueueIndex.clear();
+        resolved.forEach((id, i) => { if (id) savedQueueIndex.set(id, i); });
+    }
 
     // ── Stream URL + playhead helpers ──────────────────────────────────────
     // A transcoded stream URL carries a container extension; a direct stream
@@ -514,6 +522,7 @@
         const taken = new Set(rawQueue.filter(item => typeof item === 'string'));
         const resolved = await assignFilterSlots(rawQueue, taken);
         resolved.forEach((id, i) => { if (id && typeof rawQueue[i] !== 'string') filterBackedCells.set(id, rawQueue[i]); });
+        indexSavedQueue(resolved);
         return resolved.filter(Boolean);
     }
 
@@ -543,6 +552,7 @@
         resolved.forEach((id, i) => { if (id && typeof rawQueue[i] !== 'string') newFilterBackedCells.set(id, rawQueue[i]); });
         filterBackedCells.clear();
         for (const [k, v] of newFilterBackedCells) filterBackedCells.set(k, v);
+        indexSavedQueue(resolved);
         return resolved.filter(Boolean);
     }
 
@@ -551,20 +561,30 @@
         const idx = queue.indexOf(id);
         if (idx === -1) return;
         queue.splice(idx, 1);
-        const raw = getQueue();
-        if (idx < raw.length) raw.splice(idx, 1);
-        saveQueue(raw);
-        // Persist the removal to config (RMW) so other clients see it.
         // A scene-id string removes by value (robust against a changed
-        // queue); a filter-backed cell drops the slot at the same index.
-        mutateConfigQueue(items => {
-            const k = items.indexOf(id);
-            if (k >= 0) { items.splice(k, 1); return items; }
-            if (idx < items.length && typeof items[idx] === 'object') {
-                items.splice(idx, 1); return items;
-            }
-            return null;
-        });
+        // queue). A filter slot has no id, so it is found by its own index in
+        // the saved queue, checked to still hold the same filter; if another
+        // client has moved things since, the first slot with that filter goes.
+        const filterItem = filterBackedCells.get(id);
+        const savedIdx = savedQueueIndex.get(id);
+        const filterKey = filterItem && JSON.stringify(filterItem.filter || {});
+        const isSlot = it => !!it && typeof it === 'object' && JSON.stringify(it.filter || {}) === filterKey;
+        const dropItem = items => {
+            const k = !filterItem ? items.indexOf(id)
+                : (savedIdx != null && isSlot(items[savedIdx])) ? savedIdx
+                : items.findIndex(isSlot);
+            if (k < 0) return null;
+            items.splice(k, 1);
+            return items;
+        };
+        const raw = dropItem(getQueue());
+        if (raw) saveQueue(raw);
+        savedQueueIndex.delete(id);
+        if (savedIdx != null) {
+            for (const [k, v] of savedQueueIndex) if (v > savedIdx) savedQueueIndex.set(k, v - 1);
+        }
+        // Persist the removal to config (RMW) so other clients see it.
+        mutateConfigQueue(dropItem);
         unmutedIds.delete(String(id));
         filterBackedCells.delete(String(id));
         disconnectAudio(id);
@@ -587,6 +607,10 @@
         }
         filterBackedCells.delete(id);
         filterBackedCells.set(newId, filterItem);
+        if (savedQueueIndex.has(id)) {
+            savedQueueIndex.set(newId, savedQueueIndex.get(id));
+            savedQueueIndex.delete(id);
+        }
         if (unmutedIds.has(id)) { unmutedIds.delete(id); unmutedIds.add(newId); }
         const qIdx = queue.indexOf(id);
         if (qIdx !== -1) queue[qIdx] = newId;
@@ -2934,6 +2958,7 @@
                 await mutateConfigQueue(items => {
                     const room = 16 - items.length;
                     for (let i = 0; i < Math.min(ids.length, room); i++) {
+                        savedQueueIndex.set(ids[i], items.length);
                         items.push({ type: 'filter', filter: {} });
                     }
                     return items;
@@ -2946,6 +2971,7 @@
                 await mutateConfigQueue(() => ids.map(() => ({ type: 'filter', filter: {} })));
                 filterBackedCells.clear();
                 ids.forEach(id => filterBackedCells.set(id, rouletteFilter));
+                indexSavedQueue(ids);
                 queue = ids;
             }
             await loadSceneMeta(ids);
