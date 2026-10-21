@@ -1,12 +1,13 @@
 import { toggleMuteAll } from './audio.js';
 import { closeAllPopups } from './cell.js';
-import { IDLE_HIDE_MS, SETTINGS_KEY, STORAGE_KEY } from './constants.js';
+import { IDLE_HIDE_MS, SETTINGS_KEY } from './constants.js';
 import { KEYBIND_ACTIONS, MOUSE_BIND_EXCLUDE, isSeekChord, normalizeKey, runBinding } from './keybinds.js';
 import { applyFocusMode, applyJustifiedLayout, toggleFocusMode } from './layout.js';
 import { commitLoopDrag, updateLoopDrag } from './loops.js';
 import { openMenuPanel } from './menu.js';
 import { flushProgressMap, snapshotAllProgress, startProgressSaveLoop } from './progress.js';
-import { getQueue, pendingConfigWrites, resolveQueue, resyncFromCache, seedCacheFromConfig } from './queue.js';
+import { resolveQueue, resyncFromCache } from './queue.js';
+import { cachedQueue, isQueueCacheEvent, pendingWrites, refreshQueueCache } from './queue-store.js';
 import { render } from './render.js';
 import { incrementAllO, loadSceneMeta } from './scenes-api.js';
 import { commitSeek, queueSeekZone, setActiveSeek, updateSeekFill } from './seek.js';
@@ -28,7 +29,7 @@ function registerSyncListeners() {
 
     // Same-origin cross-tab: the local cache changed in another tab.
     window.addEventListener('storage', e => {
-        if (e.key !== STORAGE_KEY) return;
+        if (!isQueueCacheEvent(e)) return;
         resyncFromCache();
     });
 
@@ -38,12 +39,12 @@ function registerSyncListeners() {
     // tracks the live queue without churning playback. Skips while our own
     // write is in flight so it can't revert it.
     setInterval(async () => {
-        if (document.visibilityState !== 'visible' || pendingConfigWrites > 0) return;
-        if (await seedCacheFromConfig()) resyncFromCache();
+        if (document.visibilityState !== 'visible' || pendingWrites > 0) return;
+        if (await refreshQueueCache()) resyncFromCache();
     }, 5000);
     document.addEventListener('visibilitychange', async () => {
-        if (document.visibilityState !== 'visible' || pendingConfigWrites > 0) return;
-        if (await seedCacheFromConfig()) resyncFromCache();
+        if (document.visibilityState !== 'visible' || pendingWrites > 0) return;
+        if (await refreshQueueCache()) resyncFromCache();
     });
 }
 
@@ -69,8 +70,8 @@ export async function init() {
 
     // Seed the local cache from the authoritative config before
     // resolving the wall, so the player opens on the live queue.
-    await seedCacheFromConfig();
-    setQueue(await resolveQueue(getQueue()));
+    await refreshQueueCache();
+    setQueue(await resolveQueue(cachedQueue()));
     document.getElementById('mv-playpause-all-btn').addEventListener('click', playPauseAll);
     document.getElementById('mv-mute-all-btn').addEventListener('click', toggleMuteAll);
     document.getElementById('mv-o-all-btn').addEventListener('click', incrementAllO);

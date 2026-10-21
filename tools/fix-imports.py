@@ -5,7 +5,8 @@ Each module's imports are worked out from the names it uses that another
 module exports at top level. Names that only appear in comments, strings, or
 the literal text of template strings don't count. Fails if two modules export
 the same name or a module assigns a binding it imports (ES modules can't do
-that; give the owner a setter instead).
+that; give the owner a setter instead). Also rewrites index.html's
+PLAYER_MODULES list, which cache-busts each module.
 
 Usage: tools/fix-imports.py [player_dir]   (default: player/ next to tools/)
 """
@@ -56,13 +57,25 @@ for m, body in bodies.items():
         print(f'updated {m}.js')
 
 # A module missing from index.html's import map still loads, just without its
-# cache-buster, so a stale copy can survive an update. Catch that here.
-html = open(os.path.join(pdir, '..', 'index.html'), encoding='utf-8').read()
-listed = re.search(r'PLAYER_MODULES = \[(.*?)\]', html, re.S)
-listed = set(re.findall(r"'([\w-]+)'", listed.group(1))) if listed else set()
-if listed != set(modules):
-    problems.append(f'index.html PLAYER_MODULES is out of date: missing {sorted(set(modules) - listed)}, '
-                    f'extra {sorted(listed - set(modules))}')
+# cache-buster, so a stale copy could survive an update. Rewrite the list.
+html_path = os.path.join(pdir, '..', 'index.html')
+html = open(html_path, encoding='utf-8').read()
+rows, row = [], ''
+for m in sorted(modules):
+    item = f"'{m}', "
+    if row and len(row) + len(item) > 64:
+        rows.append(row.rstrip())
+        row = ''
+    row += item
+rows.append(row.rstrip().rstrip(','))
+listing = 'PLAYER_MODULES = [\n' + ''.join(f'            {r}\n' for r in rows) + '        ];'
+new_html = re.sub(r'PLAYER_MODULES = \[.*?\];', lambda _: listing, html, flags=re.S)
+if 'PLAYER_MODULES = [' not in html:
+    problems.append('index.html has no PLAYER_MODULES list')
+elif new_html != html:
+    with open(html_path, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(new_html)
+    print('updated index.html module list')
 
 if problems:
     sys.exit('\n'.join(problems))

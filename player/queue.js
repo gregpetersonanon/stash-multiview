@@ -1,7 +1,7 @@
 import { disconnectAudio } from './audio.js';
-import { STORAGE_KEY } from './constants.js';
 import { buildSceneFilter } from './filters.js';
 import { clearResumeTime } from './progress.js';
+import { cacheQueue, cachedQueue, mutateQueue } from './queue-store.js';
 import { render } from './render.js';
 import { loadSceneMeta } from './scenes-api.js';
 import { seekToStart } from './seek.js';
@@ -9,82 +9,10 @@ import { filterBackedCells, indexSavedQueue, queue, savedQueueIndex, seekBases, 
 
 // ── Queue ──────────────────────────────────────────────────────────────
 
-export function getQueue() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
-    catch { return []; }
-}
-
-export function saveQueue(q) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(q));
-}
-
-// ── Shared queue source of truth: Stash plugin config ────────────
-// The queue is shared with the Stash scene-list plugin, binge web,
-// binge-iOS, and multiview-ios. Config is authoritative; localStorage
-// is a local cache. The player seeds the cache from config on load,
-// polls it, and writes its own changes (remove tile / roulette) back
-// to config via read-modify-write so it never clobbers a concurrent
-// change from another client.
-export async function fetchConfigQueue() {
-    const r = await fetch('/graphql', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: '{ configuration { plugins } }' })
-    });
-    const j = await r.json();
-    const raw = j?.data?.configuration?.plugins?.multiView?.queue;
-    try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a : []; }
-    catch { return []; }
-}
-
-export async function writeConfigQueue(q) {
-    await fetch('/graphql', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            query: 'mutation($input: Map!) { configurePlugin(plugin_id: "multiView", input: $input) }',
-            variables: { input: { queue: JSON.stringify(q) } }
-        })
-    });
-}
-
-// Number of in-flight config writes — the poll skips while > 0 so it
-// can't seed the cache from a not-yet-committed config and revert our
-// own just-made change.
-export let pendingConfigWrites = 0;
-
-// Read-modify-write the live config queue (one pass: read fresh, apply
-// mutator, write — so a concurrent add elsewhere is preserved). Also
-// mirrors the result into the local cache.
-export async function mutateConfigQueue(mutator) {
-    pendingConfigWrites++;
-    try {
-        let items;
-        try { items = await fetchConfigQueue(); }
-        catch { return; }
-        const next = mutator(items.slice());
-        if (next === null) { saveQueue(items); return; }
-        try { await writeConfigQueue(next); } catch { return; }
-        saveQueue(next);
-    } finally { pendingConfigWrites--; }
-}
-
-// Seed/refresh the local cache from config. Returns true if the cache
-// changed (so the caller can re-resolve + re-render the wall).
-export async function seedCacheFromConfig() {
-    try {
-        const q = await fetchConfigQueue();
-        const next = JSON.stringify(q);
-        if (next !== localStorage.getItem(STORAGE_KEY)) {
-            localStorage.setItem(STORAGE_KEY, next);
-            return true;
-        }
-    } catch { /* offline — keep cache */ }
-    return false;
-}
-
 // Re-resolve the wall from the current cache (shared by the storage
 // event + the config poll). Preserves currently-playing filter slots.
 export function resyncFromCache() {
-    resolveQueuePreserving(getQueue()).then(resolved => {
+    resolveQueuePreserving(cachedQueue()).then(resolved => {
         setQueue(resolved);
         loadSceneMeta(queue).then(render);
     });
@@ -197,14 +125,14 @@ export function removeScene(id) {
         items.splice(k, 1);
         return items;
     };
-    const raw = dropItem(getQueue());
-    if (raw) saveQueue(raw);
+    const raw = dropItem(cachedQueue());
+    if (raw) cacheQueue(raw);
     savedQueueIndex.delete(id);
     if (savedIdx != null) {
         for (const [k, v] of savedQueueIndex) if (v > savedIdx) savedQueueIndex.set(k, v - 1);
     }
     // Persist the removal to config (RMW) so other clients see it.
-    mutateConfigQueue(dropItem);
+    mutateQueue(dropItem);
     unmutedIds.delete(String(id));
     filterBackedCells.delete(String(id));
     disconnectAudio(id);

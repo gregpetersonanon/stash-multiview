@@ -1,5 +1,5 @@
 import { ROULETTE_COUNT_KEY, ROULETTE_MODE_KEY } from './constants.js';
-import { mutateConfigQueue } from './queue.js';
+import { mutateQueue } from './queue-store.js';
 import { render } from './render.js';
 import { loadSceneMeta } from './scenes-api.js';
 import { filterBackedCells, indexSavedQueue, queue, savedQueueIndex, setQueue } from './state.js';
@@ -36,7 +36,7 @@ export async function loadRoulette(count, mode = 'replace') {
             setQueue([...queue, ...ids]);
             // Append matching empty-filter slots to config (RMW) so a
             // reload reproduces them and other clients see the change.
-            await mutateConfigQueue(items => {
+            await mutateQueue(items => {
                 const room = 16 - items.length;
                 for (let i = 0; i < Math.min(ids.length, room); i++) {
                     savedQueueIndex.set(ids[i], items.length);
@@ -49,7 +49,7 @@ export async function loadRoulette(count, mode = 'replace') {
             if (!ids.length) return;
             // Replace is a deliberate full reset of the queue to fresh
             // random filter slots.
-            await mutateConfigQueue(() => ids.map(() => ({ type: 'filter', filter: {} })));
+            await mutateQueue(() => ids.map(() => ({ type: 'filter', filter: {} })));
             filterBackedCells.clear();
             ids.forEach(id => filterBackedCells.set(id, rouletteFilter));
             indexSavedQueue(ids);

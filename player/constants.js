@@ -1,4 +1,3 @@
-export const STORAGE_KEY = 'stash-multiview-queue';
 export const ROULETTE_COUNT_KEY = 'stash-multiview-roulette-count';
 export const ROULETTE_MODE_KEY = 'stash-multiview-roulette-mode'; // 'replace' | 'add'
 export const SETTINGS_KEY = 'stash-multiview-settings';

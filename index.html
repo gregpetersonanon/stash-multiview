@@ -99,12 +99,12 @@
        import map rewrites each path to its versioned URL. Bump PLAYER_VERSION
        on any change to player/; list new modules in PLAYER_MODULES. */
     (function () {
-        var PLAYER_VERSION = '277';
+        var PLAYER_VERSION = '278';
         var PLAYER_MODULES = [
             'audio', 'cell', 'constants', 'filters', 'icons', 'keybinds',
             'layout', 'loops', 'main', 'menu', 'progress', 'queue',
-            'render', 'scenes-api', 'seek', 'settings', 'settings-ui',
-            'state', 'stream', 'topbar', 'tracking', 'ui'
+            'queue-store', 'render', 'scenes-api', 'seek', 'settings',
+            'settings-ui', 'state', 'stream', 'topbar', 'tracking', 'ui'
         ];
         var imports = {};
         PLAYER_MODULES.forEach(function (m) {
