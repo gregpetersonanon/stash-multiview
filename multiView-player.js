@@ -2816,6 +2816,10 @@
                 teardownPlayTracking(v);
                 v._mvCleanup?.();
             }
+            // Gains are keyed by scene id and connectAudio skips ids it already
+            // has, so a stale entry would leave this scene's volume control
+            // driving a dead node if it ever returns to the grid.
+            if (cid && !queueSet.has(cid)) disconnectAudio(cid);
             cell.remove();
         }
     }
