@@ -93,6 +93,32 @@
     <p>Nothing queued. <a href="/">Browse Stash</a> and press <strong>+</strong> to queue scenes, or use the dice button above to roll random.</p>
 </div>
 
-<script src="multiView-player.js?v=274"></script>
+<script>
+    /* Cache-bust every player module with one version. Modules import each
+       other by plain relative path, which can't carry a ?v= query, so an
+       import map rewrites each path to its versioned URL. Bump PLAYER_VERSION
+       on any change to player/; list new modules in PLAYER_MODULES. */
+    (function () {
+        var PLAYER_VERSION = '275';
+        var PLAYER_MODULES = [
+            'audio', 'constants', 'filters', 'icons', 'keybinds', 'layout',
+            'loops', 'main', 'menu', 'progress', 'queue', 'render',
+            'scenes-api', 'seek', 'settings', 'settings-ui', 'state',
+            'stream', 'topbar', 'tracking', 'ui'
+        ];
+        var imports = {};
+        PLAYER_MODULES.forEach(function (m) {
+            imports['./player/' + m + '.js'] = './player/' + m + '.js?v=' + PLAYER_VERSION;
+        });
+        var map = document.createElement('script');
+        map.type = 'importmap';
+        map.textContent = JSON.stringify({ imports: imports });
+        document.currentScript.after(map);
+        var entry = document.createElement('script');
+        entry.type = 'module';
+        entry.src = imports['./player/main.js'];
+        map.after(entry);
+    })();
+</script>
 </body>
 </html>
