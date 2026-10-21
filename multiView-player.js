@@ -2158,6 +2158,15 @@
             ? (activeSeek ? activeSeek.seekbar.closest('.mv-cell') : activeLoopDrag.cell)
             : (p.target && p.target.closest ? p.target.closest('.mv-cell') : null);
         if (!cell) { setSeekZoneCell(null); return; }
+        // The controls row sits mostly inside the zone, and the zone lifts it,
+        // so reaching for a button would make it jump away and leave the
+        // pointer on the bar. Hovering a control, or using an open volume
+        // popup, keeps the zone shut.
+        if (!dragging && (cell.classList.contains('mv-popup-open') ||
+                (p.target.closest && p.target.closest('.mv-cell-controls .mv-cell-btn, .mv-vol-popup')))) {
+            setSeekZoneCell(null);
+            return;
+        }
 
         const rect = cell.getBoundingClientRect();
         if (!dragging && p.y < rect.bottom - SEEK_ZONE_PX) { setSeekZoneCell(null); return; }
