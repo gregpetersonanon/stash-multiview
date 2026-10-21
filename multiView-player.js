@@ -1763,7 +1763,10 @@
     // mark was set, moved or cleared.
     function applyLoopState(id, video) {
         if (!video) return;
-        const loop = filterBackedCells.has(String(id)) ? null : getLoop(id);
+        // Filter cells advance to their next scene on `ended`, which native
+        // loop would suppress, so they are never looped by either mechanism.
+        if (filterBackedCells.has(String(id))) { video.loop = false; return; }
+        const loop = getLoop(id);
         const src = video.getAttribute('src') || '';
         const partial = /[?&]start=/.test(src);
         if (!loop) {
