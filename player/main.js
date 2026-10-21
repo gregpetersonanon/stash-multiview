@@ -1,4 +1,5 @@
 import { toggleMuteAll } from './audio.js';
+import { closeAllPopups } from './cell.js';
 import { IDLE_HIDE_MS, SETTINGS_KEY, STORAGE_KEY } from './constants.js';
 import { KEYBIND_ACTIONS, MOUSE_BIND_EXCLUDE, isSeekChord, normalizeKey, runBinding } from './keybinds.js';
 import { applyFocusMode, applyJustifiedLayout, toggleFocusMode } from './layout.js';
@@ -6,7 +7,7 @@ import { commitLoopDrag, updateLoopDrag } from './loops.js';
 import { openMenuPanel } from './menu.js';
 import { flushProgressMap, snapshotAllProgress, startProgressSaveLoop } from './progress.js';
 import { getQueue, pendingConfigWrites, resolveQueue, resyncFromCache, seedCacheFromConfig } from './queue.js';
-import { closeAllPopups, render } from './render.js';
+import { render } from './render.js';
 import { incrementAllO, loadSceneMeta } from './scenes-api.js';
 import { commitSeek, queueSeekZone, setActiveSeek, updateSeekFill } from './seek.js';
 import { loadPlayerSettings, playerSettings, setPlayerSettings } from './settings.js';
