@@ -42,6 +42,30 @@
     // the last few seconds is pointless. Start fresh instead.
     const PROGRESS_END_MARGIN = 10;
 
+    // How close to the bottom of a cell the pointer has to be for that cell to
+    // enter its "seek zone" (bar grows, controls lift, time readout appears).
+    // Measured in JS because the overlay covers the bar's hit strip; see the
+    // .mv-seek-zone rules in the stylesheet for why :hover cannot do this.
+    const SEEK_ZONE_PX = 34;
+
+    // A/B loops. Per-scene [A, B] range that a cell replays forever instead of
+    // playing the whole scene. Stored per scene id in localStorage, no TTL (a
+    // loop is deliberate user work, unlike a resume position), pruned to the
+    // most recently touched LOOP_MAX_ENTRIES so the map can't grow forever.
+    //  - LOOP_MIN_SECONDS: shortest range we accept, so a stray double-tap
+    //    can't create a 100ms loop that just thrashes the decoder.
+    //  - LOOP_EPSILON: timeupdate only fires ~4x/sec, so treat "at B" as
+    //    slightly before B rather than waiting to overshoot it.
+    //  - LOOP_RESOURCE_COOLDOWN_MS: a transcoded cell that can't seek inside
+    //    its buffer has to re-request the stream at ?start=A to loop. That
+    //    spawns a fresh ffmpeg each time, so bound how often one cell may do
+    //    it; a loop shorter than the cooldown just overruns B a little.
+    const LOOPS_KEY = 'stash-multiview-loops';
+    const LOOP_MIN_SECONDS = 1;
+    const LOOP_EPSILON = 0.15;
+    const LOOP_RESOURCE_COOLDOWN_MS = 3000;
+    const LOOP_MAX_ENTRIES = 500;
+
     // �"?�"? SVGs �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
     const ICON_VOLUME_ON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512" aria-hidden="true"><path fill="currentColor" d="M533.6 32.5C598.5 85.2 640 165.8 640 256s-41.5 170.7-106.4 223.5c-10.3 8.4-25.4 6.8-33.8-3.5s-6.8-25.4 3.5-33.8C557.5 398.2 592 331.2 592 256s-34.5-142.2-88.7-186.2c-10.3-8.4-11.8-23.5-3.5-33.8s23.5-11.8 33.8-3.5zM473.1 107c43.2 35.2 70.9 88.9 70.9 149s-27.7 113.8-70.9 149c-10.3 8.4-25.4 6.8-33.8-3.5s-6.8-25.4 3.5-33.8C475.3 341.3 496 301.1 496 256s-20.7-85.3-53.2-111.8c-10.3-8.4-11.8-23.5-3.5-33.8s23.5-11.8 33.8-3.5zm-60.5 74.5C434.1 199.1 448 225.9 448 256s-13.9 56.9-35.4 74.5c-10.3 8.4-25.4 6.8-33.8-3.5s-6.8-25.4 3.5-33.8C393.1 284.4 400 271 400 256s-6.9-28.4-17.7-37.3c-10.3-8.4-11.8-23.5-3.5-33.8s23.5-11.8 33.8-3.5zM301.1 34.8C312.6 40 320 51.4 320 64V448c0 12.6-7.4 24-18.9 29.2s-25 3.1-34.4-5.3L131.8 352H64c-35.3 0-64-28.7-64-64V224c0-35.3 28.7-64 64-64h67.8L266.7 40.1c9.4-8.4 22.9-10.7 34.4-5.3z"/></svg>`;
@@ -58,6 +82,7 @@
     const ICON_NEXT = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" aria-hidden="true"><path fill="currentColor" d="M52.5 440.6c-9.5 7.9-22.8 9.7-34.1 4.4S0 428.4 0 416V96C0 83.6 7.2 72.3 18.4 67s24.5-3.4 34.1 4.4l192 160L256 241V96c0-17.7 14.3-32 32-32s32 14.3 32 32V416c0 17.7-14.3 32-32 32s-32-14.3-32-32V271l-11.5 9.6-192 160z"/></svg>`;
     const ICON_EXPAND = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 10L21 3M21 3H16.5M21 3V7.5M10 14L3 21M3 21H7.5M3 21L3 16.5"/></svg>`;
     const ICON_COMPRESS = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3L14 10M14 10H18.5M14 10V5.5M3 21L10 14M10 14H5.5M10 14V18.5"/></svg>`;
+    const ICON_LOOP = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M0 224c0 17.7 14.3 32 32 32s32-14.3 32-32c0-53 43-96 96-96H320v32c0 12.9 7.8 24.6 19.8 29.6s25.7 2.2 34.9-6.9l64-64c12.5-12.5 12.5-32.8 0-45.3l-64-64c-9.2-9.2-22.9-11.9-34.9-6.9S320 19.1 320 32V64H160C71.6 64 0 135.6 0 224zm512 64c0-17.7-14.3-32-32-32s-32 14.3-32 32c0 53-43 96-96 96H192V352c0-12.9-7.8-24.6-19.8-29.6s-25.7-2.2-34.9 6.9l-64 64c-12.5 12.5-12.5 32.8 0 45.3l64 64c9.2 9.2 22.9 11.9 34.9 6.9s19.8-16.6 19.8-29.6V448H352c88.4 0 160-71.6 160-160z"/></svg>`;
     // �"?�"? State �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
     let queue = [];
@@ -90,6 +115,11 @@
         let t = video.currentTime;
         if (src.match(/[?&]start=/)) t += (seekBases.get(id) || 0);
         return t;
+    }
+    // Whole-scene length. The element's own duration is only trustworthy when
+    // the src covers the whole scene, so Stash's metadata wins where we have it.
+    function totalDuration(id, video) {
+        return scenes[id]?.duration || (video && isFinite(video.duration) ? video.duration : null);
     }
     // The buffering spinner overlay, idempotent per cell.
     function showSpinner(cell) {
@@ -553,13 +583,46 @@
         if (wasPlaying || video.autoplay) video.play();
     }
 
+    // ── Seek modifiers ─────────────────────────────────────────────────────
+    // Two modifier roles, both user-selectable in Settings. They are roles
+    // rather than bindings because the keybind format holds a single bare key
+    // (see normalizeKey) and has nowhere to put a modifier.
+    //
+    //  - fine: shrink the seek step, and scale down seekbar drag travel.
+    //  - allCells: apply the seek to every cell instead of the hovered one.
+    //
+    // Ctrl is offered but not the default for either: Ctrl+wheel is the
+    // browser's zoom gesture, and while our non-passive wheel listener could
+    // preventDefault it, hijacking a system gesture is not a good default.
+    const SEEK_MODIFIERS = [
+        { value: 'none',  label: 'None' },
+        { value: 'shift', label: 'Shift' },
+        { value: 'alt',   label: 'Alt' },
+        { value: 'ctrl',  label: 'Ctrl' },
+    ];
+    // How much a fine drag scales pointer travel. 1/5 turns a 4x4 cell from
+    // roughly 5.6 seconds per pixel into roughly 1.
+    const FINE_DRAG_GAIN = 0.2;
+    const SEEK_STEP_MAX = 120;
+
+    function modifierHeld(e, role) {
+        if (!e || !role || role === 'none') return false;
+        if (role === 'shift') return !!e.shiftKey;
+        if (role === 'alt') return !!e.altKey;
+        if (role === 'ctrl') return !!(e.ctrlKey || e.metaKey);
+        return false;
+    }
+    const isFineSeek = e => modifierHeld(e, playerSettings.fineModifier);
+    const isAllCellsSeek = e => modifierHeld(e, playerSettings.allCellsModifier);
+    const seekStepFor = e => (isFineSeek(e) ? playerSettings.seekStepFine : playerSettings.seekStep);
+
     // Scroll-wheel skip. Each scroll event accumulates a delta; the actual
     // seek fires after a short idle so rapid scrolling on transcoded streams
-    // doesn't trigger one reload per tick.
-    const WHEEL_STEP_SECONDS = 5;
+    // doesn't trigger one reload per tick. `extraDelay` staggers a grid-wide
+    // seek so 16 cells don't all re-request their transcode on the same tick.
     const wheelPending = new Map(); // id -> { delta, timeout }
 
-    function scheduleWheelSeek(id, video, delta) {
+    function scheduleWheelSeek(id, video, delta, extraDelay = 0) {
         let pending = wheelPending.get(id);
         if (pending) {
             clearTimeout(pending.timeout);
@@ -572,22 +635,56 @@
             const d = pending.delta;
             wheelPending.delete(id);
             applyWheelSeek(id, video, d);
-        }, 150);
+        }, 150 + extraDelay);
+    }
+
+    // Point a transcoded cell at a new src without changing whether it is
+    // playing. Cells are created with autoplay and never lose it, so a fresh
+    // src restarts playback on its own and `|| video.autoplay` resumes it
+    // besides. That breaks the reason to seek while paused at all: pause, walk
+    // the playhead onto the frame you want, mark it. So drop autoplay while a
+    // cell is deliberately paused and re-arm it the moment it plays again.
+    //
+    // Scoped to user-driven seeks. Stall recovery keeps its own resume rule.
+    function resourceKeepingPlayState(video, src) {
+        const wasPlaying = !video.paused;
+        if (!wasPlaying && video.autoplay) {
+            video.autoplay = false;
+            video.addEventListener('play', () => { video.autoplay = true; }, { once: true });
+        }
+        video.src = src;
+        if (wasPlaying) video.play().catch(() => {});
+    }
+
+    // Move every cell by the same amount. Each transcoded cell has to re-request
+    // its stream, so a grid-wide seek is up to 16 fresh encodes: the per-cell
+    // debounce already collapses a burst of input into one seek each, and the
+    // stagger keeps those from all landing on the same tick.
+    const SEEK_ALL_STAGGER_MS = 60;
+
+    function seekAllCells(delta) {
+        document.querySelectorAll('.mv-cell').forEach((cell, i) => {
+            const id = cell.dataset.sceneId;
+            const video = cell.querySelector('video');
+            if (id && video) scheduleWheelSeek(id, video, delta, i * SEEK_ALL_STAGGER_MS);
+        });
     }
 
     function applyWheelSeek(id, video, delta) {
-        const duration = scenes[id]?.duration || (isFinite(video.duration) ? video.duration : null);
+        const duration = totalDuration(id, video);
         if (!duration) return;
 
         const currentSrc = video.getAttribute('src');
-        const target = Math.max(0, Math.min(duration - 0.5, effectivePlayhead(video, id) + delta));
+        let target = Math.max(0, Math.min(duration - 0.5, effectivePlayhead(video, id) + delta));
+        // A looping cell plays a range, so keep a skip inside that range rather
+        // than landing outside it and being snapped back by the loop enforcer.
+        const loop = getLoop(id);
+        if (loop && loop.b > loop.a) target = Math.max(loop.a, Math.min(loop.b - LOOP_EPSILON, target));
 
         if (isTranscodeUrl(currentSrc)) {
             seekBases.set(id, target);
-            const wasPlaying = !video.paused;
             showSpinner(document.querySelector(`.mv-cell[data-scene-id="${id}"]`));
-            video.src = withStart(stripStart(currentSrc), target);
-            if (wasPlaying || video.autoplay) video.play().catch(() => {});
+            resourceKeepingPlayState(video, withStart(stripStart(currentSrc), target));
         } else {
             video.currentTime = target;
         }
@@ -664,11 +761,16 @@
         { id: 'playPauseHover', label: 'Play / Pause (hovered)',  run: e => playPauseHoveredCell(e) },
         { id: 'muteHover',      label: 'Mute / Unmute (hovered)', run: e => muteHoveredCell(e) },
         { id: 'oHover',         label: 'O counter (hovered)',     run: e => oHoveredCell(e) },
+        { id: 'loopSetA',       label: 'Loop: set A (hovered)',   run: e => setLoopMarkOnHovered(e, 'a') },
+        { id: 'loopSetB',       label: 'Loop: set B (hovered)',   run: e => setLoopMarkOnHovered(e, 'b') },
+        { id: 'loopClear',      label: 'Loop: clear (hovered)',   run: e => clearLoopOnHovered(e) },
+        { id: 'seekBack',       label: 'Seek back (hovered)',     run: e => nudgeHovered(e, -1) },
+        { id: 'seekForward',    label: 'Seek forward (hovered)',  run: e => nudgeHovered(e, 1) },
         { id: 'focus',          label: 'Toggle Focus Mode',       run: () => toggleFocusMode() },
         { id: 'fullscreen',     label: 'Toggle Full Screen',      run: () => toggleFullscreen() },
         { id: 'roulette',       label: 'Open Roulette',           run: () => openMenuPanel() },
     ];
-    const DEFAULT_KEYBINDS = { playPauseHover: '', muteHover: 'Mouse1', oHover: '', focus: 'f', fullscreen: '', roulette: '' };
+    const DEFAULT_KEYBINDS = { playPauseHover: '', muteHover: 'Mouse1', oHover: '', loopSetA: 'a', loopSetB: 'b', loopClear: 'l', seekBack: 'ArrowLeft', seekForward: 'ArrowRight', focus: 'f', fullscreen: '', roulette: '' };
     // Targets where a non-left button keeps its native meaning, so a mouse
     // shortcut must NOT fire over them: links (middle-click opens a new tab) and
     // the settings/menu/volume panels (which contain their own controls). NOTE:
@@ -698,17 +800,54 @@
         if (!v) return;
         if (v.paused) v.play().catch(() => {}); else v.pause();
     }
+    function setLoopMarkOnHovered(e, which) {
+        const cell = hoveredCell(e);
+        const id = cell && cell.dataset.sceneId;
+        const video = cell && cell.querySelector('video');
+        // Filter/roulette cells swap scenes under the loop, so they don't take one.
+        if (!id || !video || filterBackedCells.has(id)) return;
+        const loop = setLoopPoint(id, which, effectivePlayhead(video, id), sceneDuration(id, video));
+        if (loop) applyLoopState(id, video);
+    }
+    // Step the playhead by the current seek step. Works while paused, which is
+    // the point: pause, walk the playhead onto the frame you want, mark it.
+    function nudgeHovered(e, dir) {
+        const delta = dir * seekStepFor(e);
+        if (isAllCellsSeek(e)) { seekAllCells(delta); return; }
+        const cell = hoveredCell(e);
+        const id = cell && cell.dataset.sceneId;
+        const video = cell && cell.querySelector('video');
+        if (!id || !video) return;
+        scheduleWheelSeek(id, video, delta);
+    }
+    function clearLoopOnHovered(e) {
+        const cell = hoveredCell(e);
+        const id = cell && cell.dataset.sceneId;
+        const video = cell && cell.querySelector('video');
+        if (!id || !getLoop(id)) return;
+        clearLoop(id);
+        if (video) applyLoopState(id, video);
+    }
 
     function normalizeKey(k) {
         if (!k) return '';
         if (k === ' ' || k === 'Spacebar') return 'Space';
         return k.length === 1 ? k.toLowerCase() : k;
     }
+    const KEY_LABELS = { ArrowLeft: 'Left', ArrowRight: 'Right', ArrowUp: 'Up', ArrowDown: 'Down' };
     function keyLabel(k) {
         if (!k) return 'Unbound';
         if (MOUSE_LABELS[k]) return MOUSE_LABELS[k];
+        if (KEY_LABELS[k]) return KEY_LABELS[k];
         if (k.startsWith('Mouse')) return 'Mouse ' + k.slice(5);
         return k.length === 1 ? k.toUpperCase() : k;
+    }
+    // Actions that read the seek modifiers, so a chord using one is meant for
+    // us rather than for the browser.
+    const SEEK_ACTION_IDS = ['seekBack', 'seekForward'];
+    function isSeekChord(e, binding) {
+        if (!binding || !(isFineSeek(e) || isAllCellsSeek(e))) return false;
+        return SEEK_ACTION_IDS.some(id => playerSettings.keybinds[id] === binding);
     }
     // Fire the action bound to `binding`, if any. Returns true if one ran.
     function runBinding(binding, e) {
@@ -724,6 +863,20 @@
     }
     let keybindCaptureActive = false;
 
+    // Saved bindings win over the defaults. A default introduced by a NEWER
+    // version must not steal a key the user already bound to something else, so
+    // a colliding default is dropped rather than leaving two actions on one key
+    // (runBinding would silently fire whichever comes first in KEYBIND_ACTIONS).
+    function mergeKeybinds(saved = {}) {
+        const merged = { ...DEFAULT_KEYBINDS, ...saved };
+        const taken = new Set(Object.values(saved).filter(Boolean));
+        for (const id of Object.keys(merged)) {
+            if (id in saved) continue;
+            if (merged[id] && taken.has(merged[id])) merged[id] = '';
+        }
+        return merged;
+    }
+
     function loadPlayerSettings(saved = {}) {
         return {
             directPlay: saved.directPlay ?? false,
@@ -735,8 +888,22 @@
             // too loud by default, so this is user-tunable. Cells still start
             // muted; this is the level the gain jumps to when first unmuted.
             defaultVolume: Math.max(0, Math.min(2, saved.defaultVolume ?? 1.0)),
-            keybinds: { ...DEFAULT_KEYBINDS, ...(saved.keybinds || {}) }
+            // Seek steps shared by the wheel and the nudge shortcuts.
+            seekStep: clampStep(saved.seekStep, 5),
+            seekStepFine: clampStep(saved.seekStepFine, 1),
+            fineModifier: pickModifier(saved.fineModifier, 'shift'),
+            // Alt rather than Ctrl by default; Ctrl+wheel is browser zoom.
+            allCellsModifier: pickModifier(saved.allCellsModifier, 'alt'),
+            keybinds: mergeKeybinds(saved.keybinds || {})
         };
+    }
+
+    function clampStep(v, fallback) {
+        const n = Number(v);
+        return isFinite(n) && n > 0 ? Math.min(SEEK_STEP_MAX, n) : fallback;
+    }
+    function pickModifier(v, fallback) {
+        return SEEK_MODIFIERS.some(m => m.value === v) ? v : fallback;
     }
 
     let playerSettings = loadPlayerSettings();
@@ -901,13 +1068,132 @@
         volWrap.append(volVal, volSlider);
         volRow.append(volText, volWrap);
 
+        // Saved A/B loops row. Loops are deliberate work with no expiry, so
+        // there has to be one obvious place to wipe them all.
+        const loopRow = document.createElement('div');
+        loopRow.className = 'mv-settings-dp-row';
+        const loopText = document.createElement('div');
+        loopText.className = 'mv-settings-dp-text';
+        const loopLbl = document.createElement('span');
+        loopLbl.className = 'mv-settings-dp-label';
+        loopLbl.textContent = 'Saved A/B Loops';
+        const loopDesc = document.createElement('span');
+        loopDesc.className = 'mv-settings-dp-desc';
+        const describeLoops = () => {
+            const n = loopCount();
+            loopDesc.textContent = n
+                ? `${n} scene${n > 1 ? 's' : ''} loop a set range. Mark them per cell with the loop button or the A/B shortcuts.`
+                : 'No loops set. Mark a range on a cell with the loop button or the A/B shortcuts.';
+        };
+        describeLoops();
+        loopText.append(loopLbl, loopDesc);
+        const loopClearBtn = document.createElement('button');
+        loopClearBtn.className = 'mv-keybind-btn';
+        loopClearBtn.textContent = 'Clear All';
+        loopClearBtn.disabled = loopCount() === 0;
+        loopClearBtn.addEventListener('click', () => {
+            clearAllLoops();
+            document.querySelectorAll('.mv-cell').forEach(cell => {
+                const video = cell.querySelector('video');
+                if (video) applyLoopState(cell.dataset.sceneId, video);
+            });
+            describeLoops();
+            loopClearBtn.disabled = true;
+        });
+        loopRow.append(loopText, loopClearBtn);
+
+        // Collapsible section, chevron and all. Returns the <details> to append
+        // and the body rows go into `.rows`.
+        const makeSection = title => {
+            const section = document.createElement('details');
+            section.className = 'mv-settings-section';
+            const summary = document.createElement('summary');
+            summary.className = 'mv-settings-section-heading mv-section-summary';
+            summary.textContent = title;
+            const rows = document.createElement('div');
+            rows.className = 'mv-section-rows';
+            section.append(summary, rows);
+            return { section, rows };
+        };
+
+        // Seeking section. The two modifier roles live here rather than in
+        // Shortcuts because a binding holds one bare key and cannot carry a
+        // modifier; the actions they modify are rebindable as usual.
+        const { section: seekSection, rows: seekRows } = makeSection('Seeking');
+
+        const addStepRow = (label, key, title) => {
+            const row = document.createElement('div');
+            row.className = 'mv-settings-qual-row';
+            const lbl = document.createElement('label');
+            lbl.textContent = label;
+            lbl.title = title;
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.className = 'mv-seek-step-input';
+            input.min = 0.25;
+            input.max = SEEK_STEP_MAX;
+            input.step = 0.25;
+            input.value = playerSettings[key];
+            input.title = title;
+            input.addEventListener('change', () => {
+                playerSettings[key] = clampStep(input.value, playerSettings[key]);
+                input.value = playerSettings[key];
+                savePlayerSettings();
+            });
+            row.append(lbl, input);
+            seekRows.appendChild(row);
+        };
+        addStepRow('Seek step (seconds)', 'seekStep',
+            'How far the wheel and the seek shortcuts move the playhead.');
+        addStepRow('Fine step (seconds)', 'seekStepFine',
+            'Step used while the fine modifier is held.');
+
+        // Both roles read the same modifier keys, so they must not collide.
+        const modSelects = {};
+        const addModRow = (label, key, title) => {
+            const row = document.createElement('div');
+            row.className = 'mv-settings-qual-row';
+            const lbl = document.createElement('label');
+            lbl.textContent = label;
+            lbl.title = title;
+            const sel = document.createElement('select');
+            sel.className = 'mv-quality-select';
+            sel.title = title;
+            SEEK_MODIFIERS.forEach(m => {
+                const o = document.createElement('option');
+                o.value = m.value;
+                o.textContent = m.label + (m.value === 'ctrl' ? ' (fights browser zoom)' : '');
+                if (m.value === playerSettings[key]) o.selected = true;
+                sel.appendChild(o);
+            });
+            sel.addEventListener('change', () => {
+                playerSettings[key] = sel.value;
+                savePlayerSettings();
+                syncModSelects();
+            });
+            modSelects[key] = sel;
+            row.append(lbl, sel);
+            seekRows.appendChild(row);
+        };
+        // Grey out the modifier the other role already owns, so the two can
+        // never be set to the same key and race each other.
+        function syncModSelects() {
+            Object.entries(modSelects).forEach(([key, sel]) => {
+                const otherKey = key === 'fineModifier' ? 'allCellsModifier' : 'fineModifier';
+                const taken = playerSettings[otherKey];
+                Array.from(sel.options).forEach(o => {
+                    o.disabled = o.value !== 'none' && o.value === taken;
+                });
+            });
+        }
+        addModRow('Fine seek modifier', 'fineModifier',
+            'Hold to use the fine step, and to scale down seekbar drag travel.');
+        addModRow('All cells modifier', 'allCellsModifier',
+            'Hold to move every cell by the same amount instead of just the hovered one.');
+        syncModSelects();
+
         // Quality section
-        const qualSection = document.createElement('div');
-        qualSection.className = 'mv-settings-qual-section';
-        const qualHeading = document.createElement('span');
-        qualHeading.className = 'mv-settings-section-heading';
-        qualHeading.textContent = 'Quality per Grid Size';
-        qualSection.appendChild(qualHeading);
+        const { section: qualSection, rows: qualRows } = makeSection('Quality per Grid Size');
 
         const selects = {};
         GRID_ROWS.forEach(({ key, label }) => {
@@ -932,7 +1218,7 @@
             });
             selects[key] = sel;
             row.append(lbl, sel);
-            qualSection.appendChild(row);
+            qualRows.appendChild(row);
         });
 
         dpToggle.addEventListener('change', () => {
@@ -944,16 +1230,7 @@
 
         // Shortcuts section — collapsed by default (native <details>) to keep
         // the panel tidy; bind a keyboard key or mouse button per action.
-        const kbSection = document.createElement('details');
-        kbSection.className = 'mv-settings-shortcuts';
-        const kbSummary = document.createElement('summary');
-        kbSummary.className = 'mv-settings-section-heading mv-shortcuts-summary';
-        kbSummary.textContent = 'Shortcuts';
-        kbSection.appendChild(kbSummary);
-
-        const kbRows = document.createElement('div');
-        kbRows.className = 'mv-shortcuts-rows';
-        kbSection.appendChild(kbRows);
+        const { section: kbSection, rows: kbRows } = makeSection('Shortcuts');
 
         function renderKeybindRows() {
             kbRows.innerHTML = '';
@@ -1020,7 +1297,18 @@
 
         renderKeybindRows();
 
-        card.append(header, dpRow, swRow, invRow, volRow, qualSection, kbSection);
+        // Accordion: opening one section closes the others, so the panel never
+        // grows past a screen. Closing the others fires their own toggle, which
+        // returns immediately because they are shut.
+        const sections = [seekSection, qualSection, kbSection];
+        sections.forEach(section => {
+            section.addEventListener('toggle', () => {
+                if (!section.open) return;
+                sections.forEach(other => { if (other !== section) other.open = false; });
+            });
+        });
+
+        card.append(header, dpRow, swRow, invRow, volRow, loopRow, seekSection, qualSection, kbSection);
         overlay.appendChild(card);
         overlay.addEventListener('click', e => { if (e.target === overlay) closeSettingsModal(); });
         document.body.appendChild(overlay);
@@ -1253,6 +1541,10 @@
         document.querySelectorAll('.mv-cell').forEach(cell => {
             const id = cell.dataset.sceneId;
             if (!id || filterBackedCells.has(id)) return;
+            // A looping cell has no meaningful "where I left off": its position
+            // is somewhere inside the loop, and resuming there on reload would
+            // just fight the loop. It reopens at A instead.
+            if (getLoop(id)) return;
             const video = cell.querySelector('video');
             if (!video) return;
             setResumeTime(id, effectivePlayhead(video, id));
@@ -1271,6 +1563,261 @@
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') { flushAllTrackers(); snapshotAllProgress(); flushProgressMap(); }
     });
+
+    // ── A/B loops ──────────────────────────────────────────────────────────
+    // A loop is a per-scene [a, b] range the cell replays forever instead of
+    // playing the whole scene: mark A, mark B, and that cell stays on that
+    // clip while every other cell plays its own. Persisted per scene id in
+    // localStorage (this browser only) so a reload brings the loops back.
+    // A stored loop ALWAYS has both marks: setting one mark derives the other
+    // (A alone means "A to the end", B alone means "start to B"), which keeps
+    // every consumer free of half-set special cases.
+    // Filter/roulette cells are excluded by design, same as resume position:
+    // their scene changes under them, so a scene-keyed loop is meaningless and
+    // would fight the auto-advance.
+    let loopMap = null;
+    const loopReloadAt = new Map(); // id -> when this cell last paid for a ?start= reload
+
+    function ensureLoopMap() {
+        if (loopMap !== null) return loopMap;
+        loopMap = {};
+        try {
+            const parsed = JSON.parse(localStorage.getItem(LOOPS_KEY) || '{}');
+            for (const [key, v] of Object.entries(parsed)) {
+                const a = Number(v?.a), b = Number(v?.b);
+                if (!isFinite(a) || !isFinite(b) || a < 0) continue;
+                if (b - a < LOOP_MIN_SECONDS) continue;
+                loopMap[key] = { a, b, half: !!v?.half, u: Number(v?.u) || 0 };
+            }
+        } catch { loopMap = {}; }
+        return loopMap;
+    }
+
+    function saveLoopMap() {
+        const map = ensureLoopMap();
+        const keys = Object.keys(map);
+        // Loops have no TTL (deleting deliberate user work on a timer would be
+        // rude), so cap the map instead: drop the least recently touched.
+        if (keys.length > LOOP_MAX_ENTRIES) {
+            keys.sort((x, y) => (map[y].u || 0) - (map[x].u || 0))
+                .slice(LOOP_MAX_ENTRIES)
+                .forEach(k => delete map[k]);
+        }
+        try { localStorage.setItem(LOOPS_KEY, JSON.stringify(map)); } catch {}
+    }
+
+    function getLoop(id) {
+        if (id == null) return null;
+        return ensureLoopMap()[String(id)] || null;
+    }
+
+    function loopCount() {
+        return Object.keys(ensureLoopMap()).length;
+    }
+
+    // Scene-length seconds. Prefer the value from Stash: a transcode started at
+    // ?start= reports only the REMAINING length, so video.duration can't stand
+    // in for the scene there.
+    function sceneDuration(id, video) {
+        const known = scenes[id]?.duration;
+        if (known) return known;
+        if (!video) return null;
+        if (/[?&]start=/.test(video.getAttribute('src') || '')) return null;
+        return isFinite(video.duration) && video.duration > 0 ? video.duration : null;
+    }
+
+    // `half` means B was derived rather than chosen (the user has only marked A
+    // so far). It drives the cell button's three-press A -> B -> off cycle.
+    function storeLoop(id, a, b, half = false) {
+        if (!(b - a >= LOOP_MIN_SECONDS)) return null;
+        const map = ensureLoopMap();
+        map[String(id)] = { a, b, half, u: Date.now() };
+        saveLoopMap();
+        syncLoopUI(id);
+        return map[String(id)];
+    }
+
+    // Set one mark at `t`. The mark you asked for always lands where you asked;
+    // the other one only moves if it would leave an unusable range (so marking
+    // A past the current B re-opens B to the end of the scene rather than
+    // silently swapping the two behind your back).
+    function setLoopPoint(id, which, t, duration) {
+        id = String(id);
+        const existing = getLoop(id);
+        let a, b, half;
+        if (which === 'a') {
+            a = Math.max(0, t);
+            const keep = existing && existing.b - a >= LOOP_MIN_SECONDS;
+            b = keep ? existing.b : (duration || a + 30);
+            half = keep ? !!existing.half : true;
+        } else {
+            b = Math.max(0, t);
+            const keep = existing && b - existing.a >= LOOP_MIN_SECONDS;
+            a = keep ? existing.a : 0;
+            half = false;
+        }
+        if (duration) b = Math.min(b, duration);
+        return storeLoop(id, a, b, half);
+    }
+
+    function clearLoop(id) {
+        const map = ensureLoopMap();
+        const key = String(id);
+        if (!(key in map)) return;
+        delete map[key];
+        loopReloadAt.delete(key);
+        saveLoopMap();
+        syncLoopUI(key);
+    }
+
+    function clearAllLoops() {
+        loopMap = {};
+        loopReloadAt.clear();
+        try { localStorage.removeItem(LOOPS_KEY); } catch {}
+        document.querySelectorAll('.mv-cell').forEach(cell => cell._mvSyncLoop?.());
+    }
+
+    // Repaint one cell's loop chrome (seekbar region, badge, button state).
+    function syncLoopUI(id) {
+        document.querySelector(`.mv-cell[data-scene-id="${id}"]`)?._mvSyncLoop?.();
+    }
+
+    // m:ss, or h:mm:ss past an hour.
+    function fmtTime(s) {
+        if (!isFinite(s) || s < 0) s = 0;
+        const total = Math.floor(s);
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const sec = total % 60;
+        const mm = h ? String(m).padStart(2, '0') : String(m);
+        return (h ? h + ':' : '') + mm + ':' + String(sec).padStart(2, '0');
+    }
+
+    // Send a cell back to its loop start. Returns how it was done:
+    //  'seek'   - moved the playhead (direct stream, or a transcode that could
+    //             still seek inside what it had already buffered);
+    //  'reload' - paid for a fresh ?start= transcode;
+    //  'wait'   - a reload was due but is still in cooldown; the cell overruns
+    //             B for now and we try again on the next tick.
+    // `allowSeek` is how the caller escalates: a "successful" buffer seek that
+    // silently did nothing is indistinguishable from one that worked until the
+    // next tick, so the caller stops trusting it after a couple of no-ops.
+    function jumpToLoopStart(id, video, a, allowSeek = true) {
+        const src = video.getAttribute('src') || '';
+        const resumeAutoplay = () => {
+            if (video.paused && video.autoplay) video.play().catch(() => {});
+        };
+
+        if (!isTranscodeUrl(src)) {
+            try { video.currentTime = a; } catch {}
+            resumeAutoplay();
+            return 'seek';
+        }
+
+        // Transcoded: try the buffer first. Local time is scene time minus
+        // whatever offset this src was started at.
+        const local = a - (/[?&]start=/.test(src) ? (seekBases.get(id) || 0) : 0);
+        if (allowSeek && local >= 0 && video.seekable.length) {
+            const from = video.seekable.start(0);
+            const to = video.seekable.end(video.seekable.length - 1);
+            if (local >= from && local <= to) {
+                try {
+                    video.currentTime = local;
+                    resumeAutoplay();
+                    return 'seek';
+                } catch {}
+            }
+        }
+
+        const now = Date.now();
+        if (now - (loopReloadAt.get(String(id)) || 0) < LOOP_RESOURCE_COOLDOWN_MS) return 'wait';
+        loopReloadAt.set(String(id), now);
+        const wasPlaying = !video.paused;
+        seekBases.set(id, a);
+        showSpinner(document.querySelector(`.mv-cell[data-scene-id="${id}"]`));
+        const base = stripStart(src);
+        video.src = a > 0 ? withStart(base, a) : base;
+        if (wasPlaying || video.autoplay) video.play().catch(() => {});
+        return 'reload';
+    }
+
+    // A transcode started at ?start= only contains [start, end], so native loop
+    // would replay just that tail forever. Let this partial pass finish, then
+    // re-seat the full scene and hand looping back to the browser. Guarded so
+    // the resume path and a loop being cleared can't both queue the handoff and
+    // restart the stream twice on one `ended`.
+    function seatFullSceneAfterPartialPass(id, video, baseSrc) {
+        if (video._mvReseatPending) return;
+        video._mvReseatPending = true;
+        video.addEventListener('ended', () => {
+            video._mvReseatPending = false;
+            if (getLoop(id)) return; // a loop was set in the meantime; it drives restarts
+            seekBases.set(id, 0);
+            video.src = baseSrc;
+            video.loop = true;
+            video.play().catch(() => {});
+        }, { once: true });
+    }
+
+    // Bring one cell's playback in line with its loop state right now, after a
+    // mark was set, moved or cleared.
+    function applyLoopState(id, video) {
+        if (!video) return;
+        const loop = filterBackedCells.has(String(id)) ? null : getLoop(id);
+        const src = video.getAttribute('src') || '';
+        const partial = /[?&]start=/.test(src);
+        if (!loop) {
+            video.loop = !partial;
+            if (partial) seatFullSceneAfterPartialPass(id, video, stripStart(src));
+            return;
+        }
+        // Native loop restarts at 0, not at A, so a looping cell drives itself.
+        video.loop = false;
+        const t = effectivePlayhead(video, id);
+        if (t < loop.a || t >= loop.b - LOOP_EPSILON) jumpToLoopStart(id, video, loop.a);
+    }
+
+    // The cell's loop button walks the three states of a hardware A/B button:
+    // first press marks A, second marks B, third clears.
+    function cycleLoopButton(id, video) {
+        const loop = getLoop(id);
+        if (loop && !loop.half) {
+            clearLoop(id);
+        } else {
+            const which = loop && loop.half ? 'b' : 'a';
+            setLoopPoint(id, which, effectivePlayhead(video, id), sceneDuration(id, video));
+        }
+        applyLoopState(id, video);
+    }
+
+    // Dragging a mark on the seekbar previews live and commits on release, so a
+    // drag across the bar isn't a storm of localStorage writes and reloads.
+    let activeLoopDrag = null; // { id, video, cell, which, seekbar, dur, a, b, half }
+
+    function updateLoopDrag(e) {
+        if (!activeLoopDrag) return;
+        const { seekbar, dur, which } = activeLoopDrag;
+        const rect = seekbar.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const t = ratio * dur;
+        let { a, b } = activeLoopDrag;
+        if (which === 'a') a = Math.max(0, Math.min(t, b - LOOP_MIN_SECONDS));
+        else               b = Math.min(dur, Math.max(t, a + LOOP_MIN_SECONDS));
+        if (b - a < LOOP_MIN_SECONDS) return;
+        activeLoopDrag.a = a;
+        activeLoopDrag.b = b;
+        // Moving B by hand makes it a real mark, not a derived one.
+        if (which === 'b') activeLoopDrag.half = false;
+        activeLoopDrag.cell._mvSyncLoop?.({ a, b, half: activeLoopDrag.half });
+    }
+
+    function commitLoopDrag() {
+        if (!activeLoopDrag) return;
+        const { id, video, a, b, half } = activeLoopDrag;
+        activeLoopDrag = null;
+        storeLoop(id, a, b, half);
+        applyLoopState(id, video);
+    }
 
     // �"?�"? Layout �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
@@ -1567,23 +2114,105 @@
 
     let activeSeek = null; // { seekbar, fill, video, id, ratio }
 
+    // ── Seek zone ──────────────────────────────────────────────────────────
+    // One cell at a time is "in the zone": pointer near its bottom edge, or the
+    // cell currently being dragged. Reading a rect per mousemove would force a
+    // sync layout on every move, so the work is coalesced to one frame.
+
+    let seekZoneCell = null;
+    let zonePending = null;
+    let zoneRaf = 0;
+
+    function queueSeekZone(e) {
+        zonePending = { target: e.target, x: e.clientX, y: e.clientY };
+        if (zoneRaf) return;
+        zoneRaf = requestAnimationFrame(() => {
+            zoneRaf = 0;
+            const p = zonePending;
+            zonePending = null;
+            if (p) updateSeekZone(p);
+        });
+    }
+
+    function setSeekZoneCell(cell) {
+        if (cell === seekZoneCell) return;
+        if (seekZoneCell) seekZoneCell.classList.remove('mv-seek-zone');
+        seekZoneCell = cell;
+        if (seekZoneCell) seekZoneCell.classList.add('mv-seek-zone');
+    }
+
+    function updateSeekZone(p) {
+        // render() can replace the cell we were holding; drop the detached node.
+        if (seekZoneCell && !seekZoneCell.isConnected) seekZoneCell = null;
+        // A drag owns the zone until it ends, even if the pointer wanders off
+        // the cell (the bar is still what the user is manipulating).
+        const dragging = activeSeek || activeLoopDrag;
+        const cell = dragging
+            ? (activeSeek ? activeSeek.seekbar.closest('.mv-cell') : activeLoopDrag.cell)
+            : (p.target && p.target.closest ? p.target.closest('.mv-cell') : null);
+        if (!cell) { setSeekZoneCell(null); return; }
+
+        const rect = cell.getBoundingClientRect();
+        if (!dragging && p.y < rect.bottom - SEEK_ZONE_PX) { setSeekZoneCell(null); return; }
+        setSeekZoneCell(cell);
+        // A seek drag paints its own target, which diverges from the pointer
+        // once the fine modifier scales the travel down.
+        if (!activeSeek && rect.width) paintSeekTime(cell, rect, (p.x - rect.left) / rect.width);
+    }
+
+    // The readout reports the time the cell would seek to. The bar spans the
+    // cell, so the cell rect and the bar rect are interchangeable here.
+    function paintSeekTime(cell, rect, rawRatio) {
+        const readout = cell.querySelector('.mv-seek-time');
+        if (!readout) return;
+        const id = cell.dataset.sceneId;
+        const video = cell.querySelector('video');
+        const duration = totalDuration(id, video);
+        if (!duration) { readout.textContent = ''; return; }
+        const ratio = Math.max(0, Math.min(1, rawRatio));
+        readout.textContent = fmtTime(ratio * duration) + ' / ' + fmtTime(duration);
+        // Cells clip their overflow, so hold the centred bubble far enough in
+        // from either edge that it stays whole at 0% and 100%.
+        const margin = rect.width ? (readout.offsetWidth / 2 + 4) / rect.width : 0;
+        readout.style.left = (100 * Math.max(margin, Math.min(1 - margin, ratio))) + '%';
+    }
+
     function updateSeekFill(e) {
         if (!activeSeek) return;
         const rect = activeSeek.seekbar.getBoundingClientRect();
-        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        if (!rect.width) return;
+
+        // Travel from the grab point, scaled. At gain 1 this is identical to
+        // reading the pointer position absolutely, so ordinary drags are
+        // unchanged; only the fine modifier makes the two differ.
+        const fine = isFineSeek(e);
+        if (fine !== activeSeek.fine) {
+            // Re-anchor on press or release so the fill can't jump mid-drag.
+            activeSeek.fine = fine;
+            activeSeek.originX = e.clientX;
+            activeSeek.originRatio = activeSeek.ratio;
+        }
+        const travel = (e.clientX - activeSeek.originX) * (fine ? FINE_DRAG_GAIN : 1);
+        if (travel) activeSeek.moved = true;
+        const ratio = Math.max(0, Math.min(1, activeSeek.originRatio + travel / rect.width));
         activeSeek.ratio = ratio;
+        const zoneCell = activeSeek.seekbar.closest('.mv-cell');
+        if (zoneCell) paintSeekTime(zoneCell, rect, ratio);
         activeSeek.fill.style.transform = 'scaleX(' + ratio + ')';
     }
 
     function commitSeek() {
         if (!activeSeek || activeSeek.ratio == null) return;
+        // A fine grab that never moved is a click to start refining, not a
+        // seek request. Committing it would restart the transcode for nothing.
+        if (activeSeek.fine && !activeSeek.moved) return;
         const { video, id, ratio } = activeSeek;
         // A single click fires both mousedown and mouseup, each calling
         // commitSeek with the same ratio. Without this guard the transcoder
         // gets two back-to-back src reassignments at the same offset.
         if (activeSeek.lastCommittedRatio === ratio) return;
         activeSeek.lastCommittedRatio = ratio;
-        const duration = scenes[id]?.duration || (isFinite(video.duration) ? video.duration : null);
+        const duration = totalDuration(id, video);
         if (!duration) return;
 
         const targetTime = ratio * duration;
@@ -1591,10 +2220,8 @@
 
         if (isTranscodeUrl(currentSrc)) {
             seekBases.set(id, targetTime);
-            const wasPlaying = !video.paused;
             showSpinner(document.querySelector(`.mv-cell[data-scene-id="${id}"]`));
-            video.src = withStart(stripStart(currentSrc), targetTime);
-            if (wasPlaying || video.autoplay) video.play().catch(() => {});
+            resourceKeepingPlayState(video, withStart(stripStart(currentSrc), targetTime));
         } else {
             video.currentTime = targetTime;
         }
@@ -1671,9 +2298,12 @@
 
             const video = document.createElement('video');
             const baseSrc = pickStream(id);
-            let resumeTime = isFilterBacked ? 0 : getResumeTime(id);
+            // A looped scene opens at A instead of wherever it was left off:
+            // inside a loop, "where I left off" has no meaning.
+            const cellLoop = isFilterBacked ? null : getLoop(id);
+            let resumeTime = cellLoop ? cellLoop.a : (isFilterBacked ? 0 : getResumeTime(id));
             const dur = scenes[id]?.duration;
-            if (resumeTime > 0 && dur && resumeTime > dur - PROGRESS_END_MARGIN) {
+            if (!cellLoop && resumeTime > 0 && dur && resumeTime > dur - PROGRESS_END_MARGIN) {
                 // Stale/at-or-past-end offset (scene re-encoded shorter, or saved
                 // right at the end). Start fresh rather than ?start= past EOF.
                 resumeTime = 0;
@@ -1683,7 +2313,7 @@
             // A transcode resumed via ?start= only contains [resumeTime, end], so
             // native loop would replay just that tail forever. Start it unlooped
             // and re-seat to the full scene when the first partial pass ends.
-            const resumedTranscode = resumeTime > 0 && isTranscodeSrc && !isFilterBacked;
+            const resumedTranscode = resumeTime > 0 && isTranscodeSrc && !isFilterBacked && !cellLoop;
             // Assigning src kicks off the load/transcode. Deferred + staggered
             // (invoked from the staggered start below) so a full grid doesn't
             // fire every transcode request at the same instant.
@@ -1703,17 +2333,10 @@
                 }
             };
             video.autoplay = true;
-            video.loop = !isFilterBacked && !resumedTranscode;
-            if (resumedTranscode) {
-                // First (partial) pass done — reload from the start so subsequent
-                // loops play the whole scene, then hand back to native loop.
-                video.addEventListener('ended', () => {
-                    seekBases.set(id, 0);
-                    video.src = baseSrc;
-                    video.loop = true;
-                    video.play().catch(() => {});
-                }, { once: true });
-            }
+            // A cell with an A/B loop drives its own restarts (native loop goes
+            // back to 0, not to A), so native looping stays off while one is set.
+            video.loop = !isFilterBacked && !resumedTranscode && !cellLoop;
+            if (resumedTranscode) seatFullSceneAfterPartialPass(id, video, baseSrc);
             video.muted = !unmutedIds.has(id);
             video.playsInline = true;
             video.disablePictureInPicture = true;
@@ -1770,7 +2393,7 @@
                 lastRecoveryAt = now;
                 const currentSrc = video.getAttribute('src') || '';
                 let t = effectivePlayhead(video, id);
-                const dur = scenes[id]?.duration || (isFinite(video.duration) ? video.duration : null);
+                const dur = totalDuration(id, video);
                 if (dur && t > dur - 0.5) t = Math.max(0, dur - 0.5); // never re-source past EOF
                 if (isTranscodeUrl(currentSrc)) {
                     seekBases.set(id, t);
@@ -1912,6 +2535,21 @@
                 incrementO(id);
             });
 
+            // A/B loop: badge (bottom-left of the overlay) plus a button that
+            // cycles A -> B -> off. Filter cells get neither, their scene changes.
+            const loopBadge = document.createElement('span');
+            loopBadge.className = 'mv-loop-badge';
+            loopBadge.innerHTML = ICON_LOOP + '<span class="mv-loop-badge-text"></span>';
+            const loopBadgeText = loopBadge.querySelector('.mv-loop-badge-text');
+
+            const loopBtn = document.createElement('button');
+            loopBtn.className = 'mv-cell-btn mv-cell-loop-btn';
+            loopBtn.innerHTML = ICON_LOOP;
+            loopBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                cycleLoopButton(id, video);
+            });
+
             const prevBtn = document.createElement('button');
             prevBtn.className = 'mv-cell-skip-btn mv-cell-prev';
             prevBtn.innerHTML = ICON_PREV;
@@ -1935,7 +2573,8 @@
             centerControls.className = 'mv-cell-center-controls';
             centerControls.append(prevBtn, playPauseBtn, nextBtn);
 
-            controls.append(oBtn, audioBtn, removeBtn);
+            if (isFilterBacked) controls.append(oBtn, audioBtn, removeBtn);
+            else                controls.append(loopBadge, oBtn, loopBtn, audioBtn, removeBtn);
             overlay.append(sceneTitleEl, centerControls, controls);
 
             // Volume popup (direct child of cell, not overlay)
@@ -1982,16 +2621,112 @@
             seekFill.className = 'mv-seekbar-fill';
             seekbar.appendChild(seekFill);
 
+            // Time under the pointer, filled in by the seek-zone painter.
+            const seekTime = document.createElement('span');
+            seekTime.className = 'mv-seek-time';
+            seekbar.appendChild(seekTime);
+
+            // Loop range drawn over the track, with a draggable mark at each end.
+            const loopRegion = document.createElement('div');
+            loopRegion.className = 'mv-loop-region';
+            const loopFill = document.createElement('div');
+            loopFill.className = 'mv-loop-progress';
+            loopRegion.appendChild(loopFill);
+            const handleA = document.createElement('span');
+            handleA.className = 'mv-loop-handle is-a';
+            const handleB = document.createElement('span');
+            handleB.className = 'mv-loop-handle is-b';
+            loopRegion.append(handleA, handleB);
+            seekbar.appendChild(loopRegion);
+
+            // How far through the loop we are, as a fraction of the band.
+            const paintLoopProgress = (l) => {
+                if (!l) return;
+                const span = l.b - l.a;
+                const frac = span > 0 ? (effectivePlayhead(video, id) - l.a) / span : 0;
+                loopFill.style.transform = 'scaleX(' + Math.max(0, Math.min(1, frac)) + ')';
+            };
+
+            // Repaint the loop chrome. `preview` overrides the stored loop while
+            // a mark is being dragged.
+            const syncLoop = (preview) => {
+                const l = preview || (isFilterBacked ? null : getLoop(id));
+                cell.classList.toggle('mv-looping', !!l);
+                const duration = sceneDuration(id, video);
+                if (l && duration) {
+                    loopRegion.style.display = 'block';
+                    loopRegion.style.left = (100 * Math.max(0, Math.min(1, l.a / duration))) + '%';
+                    loopRegion.style.width = (100 * Math.max(0, Math.min(1, (l.b - l.a) / duration))) + '%';
+                    paintLoopProgress(l);
+                } else {
+                    loopRegion.style.display = 'none';
+                }
+                if (l) {
+                    loopBadgeText.textContent = fmtTime(l.a) + ' - ' + (l.half && !duration ? 'end' : fmtTime(l.b));
+                    loopBtn.classList.add('is-active');
+                    loopBtn.title = l.half
+                        ? `Loop starts at ${fmtTime(l.a)}. Click to set the end here.`
+                        : `Looping ${fmtTime(l.a)} - ${fmtTime(l.b)}. Click to clear.`;
+                } else {
+                    loopBadgeText.textContent = '';
+                    loopBtn.classList.remove('is-active');
+                    loopBtn.title = 'Loop: set the start here';
+                }
+            };
+            cell._mvSyncLoop = syncLoop;
+
+            // Two no-op buffer seeks in a row means this stream won't seek
+            // backwards at all, so stop trying and pay for a ?start= reload.
+            let loopSeekAttempts = 0;
+            const enforceLoop = () => {
+                const l = isFilterBacked ? null : getLoop(id);
+                if (!l) return;
+                if (effectivePlayhead(video, id) < l.b - LOOP_EPSILON) {
+                    loopSeekAttempts = 0;
+                    return;
+                }
+                const how = jumpToLoopStart(id, video, l.a, loopSeekAttempts < 2);
+                if (how === 'seek') loopSeekAttempts++;
+                else if (how === 'reload') loopSeekAttempts = 0;
+            };
+
+            const startLoopDrag = (which, ev) => {
+                if (ev.button !== 0) return;
+                const l = getLoop(id);
+                const duration = sceneDuration(id, video);
+                if (!l || !duration) return;
+                // Keep the seekbar's own click-to-seek out of this.
+                ev.stopPropagation();
+                ev.preventDefault();
+                activeLoopDrag = { id, video, cell, which, seekbar, dur: duration, a: l.a, b: l.b, half: !!l.half };
+            };
+            handleA.addEventListener('mousedown', e => startLoopDrag('a', e));
+            handleB.addEventListener('mousedown', e => startLoopDrag('b', e));
+
+            // B at the end of the scene (or of a partial ?start= stream) ends
+            // instead of crossing B, so restart from A here too.
+            video.addEventListener('ended', () => {
+                const l = isFilterBacked ? null : getLoop(id);
+                if (l) jumpToLoopStart(id, video, l.a);
+            });
+
             const updateProgress = () => {
                 if (activeSeek && activeSeek.id === id) return;
-                const duration = scenes[id]?.duration || (isFinite(video.duration) ? video.duration : null);
+                const duration = totalDuration(id, video);
                 if (duration) seekFill.style.transform = 'scaleX(' + (effectivePlayhead(video, id) / duration) + ')';
+                if (!activeLoopDrag || activeLoopDrag.id !== id) paintLoopProgress(isFilterBacked ? null : getLoop(id));
             };
 
             video.addEventListener('timeupdate', () => {
                 if (video.seeking) return;
+                enforceLoop();
                 updateProgress();
             });
+
+            // Duration is what turns marks into positions on the bar, so repaint
+            // once the stream reports it (Stash usually knows it up front).
+            video.addEventListener('loadedmetadata', () => syncLoop());
+            syncLoop();
 
             // Debounced spinner: the browser fires rapid seeking/seeked
             // cycles during a buffer underrun. Showing/hiding the spinner on
@@ -2015,9 +2750,23 @@
 
             seekbar.addEventListener('mousedown', e => {
                 e.stopPropagation();
-                activeSeek = { seekbar, fill: seekFill, video, id, ratio: null };
-                updateSeekFill(e);
-                commitSeek(); // immediate jump on click
+                const rect = seekbar.getBoundingClientRect();
+                const fine = isFineSeek(e);
+                const duration = totalDuration(id, video);
+                // A plain grab is absolute: the bar means what it has always
+                // meant, and the click jumps there. A fine grab anchors at the
+                // current playhead instead, so you can inch a loop point in
+                // without first losing your place.
+                const originRatio = fine && duration
+                    ? Math.max(0, Math.min(1, effectivePlayhead(video, id) / duration))
+                    : (rect.width ? Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) : 0);
+                activeSeek = {
+                    seekbar, fill: seekFill, video, id,
+                    ratio: originRatio, originRatio, originX: e.clientX, fine, moved: false,
+                };
+                seekFill.style.transform = 'scaleX(' + originRatio + ')';
+                paintSeekTime(cell, rect, originRatio);
+                if (!fine) commitSeek(); // immediate jump on click
             });
 
             cell.addEventListener('wheel', e => {
@@ -2030,8 +2779,9 @@
                 // forward (some users expect the page-scroll-down direction).
                 const scrollUp = e.deltaY < 0;
                 const forward = playerSettings.invertWheelSeek ? !scrollUp : scrollUp;
-                const delta = forward ? WHEEL_STEP_SECONDS : -WHEEL_STEP_SECONDS;
-                scheduleWheelSeek(id, video, delta);
+                const delta = (forward ? 1 : -1) * seekStepFor(e);
+                if (isAllCellsSeek(e)) seekAllCells(delta);
+                else scheduleWheelSeek(id, video, delta);
             }, { passive: false });
 
             cell.append(video, loadingDiv, overlay, popup, seekbar);
@@ -2338,10 +3088,15 @@
             // Let modified chords (Ctrl/Cmd/Alt) and typing in fields pass through,
             // and stand down while a rebind capture is grabbing the next key.
             if (keybindCaptureActive) return;
-            if (e.ctrlKey || e.metaKey || e.altKey) return;
             const tag = e.target.tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
-            runBinding(normalizeKey(e.key), e);
+            const binding = normalizeKey(e.key);
+            // The one exception: a modifier the user has given a seek role,
+            // pressed with a key bound to a seek action, is ours. runBinding
+            // calls preventDefault, which is also what stops Alt+Left from
+            // navigating back. Every other chord still belongs to the browser.
+            if ((e.ctrlKey || e.metaKey || e.altKey) && !isSeekChord(e, binding)) return;
+            runBinding(binding, e);
         });
 
         // Mouse-button shortcuts. Never hijack the left button; skip links and
@@ -2364,8 +3119,14 @@
             if (playerSettings.focusMode) applyJustifiedLayout();
         });
 
-        document.addEventListener('mousemove', updateSeekFill);
-        document.addEventListener('mouseup', () => { commitSeek(); activeSeek = null; });
+        document.addEventListener('mousemove', e => { updateSeekFill(e); updateLoopDrag(e); queueSeekZone(e); });
+        document.addEventListener('mouseup', e => {
+            commitSeek();
+            activeSeek = null;
+            commitLoopDrag();
+            // The drag was holding the zone open; hand it back to the pointer.
+            queueSeekZone(e);
+        });
 
         // Idle auto-hide: any pointer/keyboard activity keeps the chrome up and
         // re-arms the hide timer; stillness hides it after IDLE_HIDE_MS.

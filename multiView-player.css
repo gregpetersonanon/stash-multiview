@@ -292,6 +292,7 @@ html, body {
     align-items: center;
     justify-content: flex-end;
     gap: 6px;
+    transition: transform 0.15s;
 }
 .mv-cell-btn {
     display: flex;
@@ -363,6 +364,44 @@ html, body {
     height: 6px;
 }
 
+/* Seek zone: the pointer is near the bottom of a cell, so the bar becomes a
+   real target and the controls row lifts clear of it.
+
+   Entry is decided in JS from geometry rather than by :hover, because the
+   overlay carrying the buttons is z-index 20 and sits on top of the bar's
+   invisible hit strip (z-index 15). Approaching the bar from inside the cell
+   crosses the buttons first and they swallow the hover, so :hover on the bar
+   can never fire. Once the zone is live the bar outranks the overlay, which is
+   safe because the buttons have moved up out of the strip. */
+.mv-cell.mv-seek-zone .mv-seekbar {
+    height: 14px;
+    z-index: 25;
+}
+/* Buttons now sit at 20px+ from the bottom, so the strip stops right below them. */
+.mv-cell.mv-seek-zone .mv-seekbar::before { height: 20px; }
+.mv-cell.mv-seek-zone .mv-cell-controls { transform: translateY(-14px); }
+
+/* Time under the pointer. Only up while the zone is live, per the request:
+   visible when you need it for lining up a loop, gone the rest of the time. */
+.mv-seek-time {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.82);
+    color: #fff;
+    font-size: 11px;
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 4;
+}
+.mv-cell.mv-seek-zone .mv-seek-time { opacity: 1; }
+
 .mv-seekbar-fill {
     height: 100%;
     width: 100%;
@@ -371,6 +410,109 @@ html, body {
     transform: scaleX(0);
     transform-origin: left center;
 }
+
+/* ── A/B loop range ────────────────────────────────────────────────────────── */
+
+/* The band between the two marks. With a loop set, the accent belongs to the
+   looped stretch, not to "everything played so far", so the band owns the
+   accent and the ordinary progress fill outside it is dimmed to a hint (see
+   .mv-looping below). The track keeps click-to-seek, so the band ignores the
+   pointer and only the marks themselves are grabbable. */
+.mv-loop-region {
+    display: none;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* Unplayed part of the loop: accent held back so the played part reads brighter. */
+.mv-loop-region::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--mv-accent);
+    opacity: 0.35;
+}
+
+/* Position within the loop, so a long range still shows where it's up to. */
+.mv-loop-progress {
+    position: absolute;
+    inset: 0;
+    background: var(--mv-accent);
+    transform: scaleX(0);
+    transform-origin: left center;
+}
+
+/* Played-so-far outside the loop stays legible but stops competing. */
+.mv-cell.mv-looping .mv-seekbar-fill {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.mv-loop-handle {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 4px;
+    background: #fff;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+    pointer-events: auto;
+    cursor: ew-resize;
+    z-index: 3;
+}
+
+.mv-loop-handle.is-a { left: -2px; }
+.mv-loop-handle.is-b { right: -2px; }
+
+/* Grabbing a 4px mark on a 4px bar is unfair, so extend the hit area up into
+   the cell and out to either side without moving the visible mark. */
+.mv-loop-handle::before {
+    content: '';
+    position: absolute;
+    left: -7px;
+    right: -7px;
+    bottom: -4px;
+    height: 22px;
+}
+
+/* Easier to aim at once you're in the cell (the bar itself grows on hover). */
+.mv-cell:hover .mv-loop-handle {
+    top: -5px;
+    bottom: -5px;
+    width: 5px;
+}
+
+/* Range readout, bottom-left of the overlay opposite the buttons. */
+.mv-loop-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-right: auto;
+    padding: 0 7px;
+    height: 28px;
+    border-radius: 4px;
+    background: var(--mv-overlay-bg);
+    color: var(--mv-accent);
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.mv-loop-badge svg { width: 11px; height: 11px; flex-shrink: 0; }
+
+/* Only meaningful once a range exists. */
+.mv-cell:not(.mv-looping) .mv-loop-badge { display: none; }
+
+.mv-cell-loop-btn.is-active { color: var(--mv-accent); }
+
+/* Dense grids have no room for the readout; the lit band on the bar and the
+   button tooltip still say what the range is. */
+#mv-grid.layout-3x4 .mv-loop-badge,
+#mv-grid.layout-4x4 .mv-loop-badge { display: none; }
 
 /* ── Volume popup ──────────────────────────────────────────────────────────── */
 
@@ -697,13 +839,6 @@ body.mv-idle .mv-cell:hover:not(.mv-popup-open) .mv-seekbar {
     cursor: pointer;
 }
 
-.mv-settings-qual-section {
-    display: flex;
-    flex-direction: column;
-    padding: 12px 16px 16px;
-    gap: 8px;
-}
-
 .mv-settings-section-heading {
     font-size: 11px;
     font-weight: 600;
@@ -738,6 +873,20 @@ body.mv-idle .mv-cell:hover:not(.mv-popup-open) .mv-seekbar {
 
 .mv-quality-select:hover { border-color: #555; }
 .mv-quality-select:disabled { opacity: 0.4; cursor: default; }
+.mv-quality-select option:disabled { color: #666; }
+
+.mv-seek-step-input {
+    width: 84px;
+    background: #1b1b1b;
+    color: #ddd;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-family: inherit;
+}
+.mv-seek-step-input:hover { border-color: #555; }
+.mv-seek-step-input:focus { outline: none; border-color: var(--mv-accent); }
 
 .mv-keybind-btn {
     min-width: 70px;
@@ -757,13 +906,17 @@ body.mv-idle .mv-cell:hover:not(.mv-popup-open) .mv-seekbar {
     border-color: var(--mv-accent);
     color: var(--mv-accent);
 }
+.mv-keybind-btn:disabled { opacity: 0.45; cursor: default; }
+.mv-keybind-btn:disabled:hover { border-color: #3a3a3a; }
 
-/* Collapsible Shortcuts section */
-.mv-settings-shortcuts {
-    padding: 12px 16px 16px;
+/* Collapsible settings sections. One at a time is open (an accordion), so the
+   panel stays short no matter how many sections there are. */
+.mv-settings-section {
+    padding: 12px 16px;
     border-top: 1px solid var(--mv-border);
 }
-.mv-shortcuts-summary {
+.mv-settings-section[open] { padding-bottom: 16px; }
+.mv-section-summary {
     cursor: pointer;
     list-style: none;
     display: flex;
@@ -773,10 +926,10 @@ body.mv-idle .mv-cell:hover:not(.mv-popup-open) .mv-seekbar {
     user-select: none;
     transition: color 0.15s;
 }
-.mv-shortcuts-summary:hover { color: #999; }
-.mv-shortcuts-summary::-webkit-details-marker { display: none; }
+.mv-section-summary:hover { color: #999; }
+.mv-section-summary::-webkit-details-marker { display: none; }
 /* Chevron that rotates when the section opens */
-.mv-shortcuts-summary::before {
+.mv-section-summary::before {
     content: '';
     width: 5px;
     height: 5px;
@@ -785,8 +938,8 @@ body.mv-idle .mv-cell:hover:not(.mv-popup-open) .mv-seekbar {
     transform: rotate(-45deg);
     transition: transform 0.15s;
 }
-.mv-settings-shortcuts[open] .mv-shortcuts-summary::before { transform: rotate(45deg); }
-.mv-shortcuts-rows {
+.mv-settings-section[open] .mv-section-summary::before { transform: rotate(45deg); }
+.mv-section-rows {
     display: flex;
     flex-direction: column;
     gap: 8px;
