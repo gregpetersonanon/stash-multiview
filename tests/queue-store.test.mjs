@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 // Fake Stash: the multiView plugin config map, and a hook to run between
 // requests (to simulate another client writing concurrently).
-let config, writes, failNext, betweenRequests;
+let config, writes, failNext, betweenRequests, holdNextRead;
 const storage = new Map();
 globalThis.localStorage = {
     getItem: k => (storage.has(k) ? storage.get(k) : null),
@@ -23,6 +23,9 @@ globalThis.fetch = async (_url, opts) => {
         data = { configurePlugin: config };
     } else {
         data = { configuration: { plugins: { multiView: { ...config } } } };
+        // Hold this read's response back (it already saw the config as it
+        // was), to simulate a slow reply that arrives after other requests.
+        if (holdNextRead) { const gate = holdNextRead; holdNextRead = null; await gate; }
     }
     return { json: async () => ({ data }) };
 };
@@ -34,6 +37,7 @@ beforeEach(() => {
     writes = 0;
     failNext = false;
     betweenRequests = null;
+    holdNextRead = null;
     storage.clear();
 });
 
@@ -91,4 +95,39 @@ test('a malformed stored queue reads as empty', async () => {
     assert.deepEqual(await store.fetchQueue(), []);
     storage.set('stash-multiview-queue', '{"not":"a list"}');
     assert.deepEqual(store.cachedQueue(), []);
+});
+
+test('two removals made at once both stick', async () => {
+    config = { queue: '["1","2","3"]' };
+    const drop = id => q => { const i = q.indexOf(id); if (i < 0) return null; q.splice(i, 1); return q; };
+    await Promise.all([store.mutateQueue(drop('1')), store.mutateQueue(drop('2'))]);
+    assert.deepEqual(JSON.parse(config.queue), ['3']);
+    assert.deepEqual(store.cachedQueue(), ['3']);
+    assert.equal(store.pendingWrites, 0);
+});
+
+test('a refresh that read the config before a write does not cache the old queue', async () => {
+    config = { queue: '["1","2","3"]' };
+    store.cacheQueue(['1', '2', '3']);
+    let release;
+    holdNextRead = new Promise(r => { release = r; });
+    const refresh = store.refreshQueueCache();      // reads the old queue; reply is slow
+    store.cacheQueue(['2', '3']);                   // pane closed: optimistic cache...
+    await store.mutateQueue(q => q.filter(id => id !== '1'));   // ...then the write
+    release();                                      // the old reply arrives
+    assert.equal(await refresh, false);
+    assert.deepEqual(store.cachedQueue(), ['2', '3']);
+    assert.deepEqual(JSON.parse(config.queue), ['2', '3']);
+});
+
+test('a refresh started while a write is in flight does nothing', async () => {
+    config = { queue: '["1"]' };
+    store.cacheQueue(['1']);
+    let release;
+    holdNextRead = new Promise(r => { release = r; });
+    const write = store.mutateQueue(q => [...q, '2']);   // its read is held
+    assert.equal(await store.refreshQueueCache(), false);
+    release();
+    await write;
+    assert.deepEqual(store.cachedQueue(), ['1', '2']);
 });

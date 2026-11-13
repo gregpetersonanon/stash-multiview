@@ -64,14 +64,48 @@ export function isQueueCacheEvent(storageEvent) {
 // reading the config mid-write could put the old queue back in the cache.
 export let pendingWrites = 0;
 
+// Changes whenever a write starts or ends on any page of this browser. A
+// read that sees it change while in flight may hold a queue from before a
+// write, so refreshQueueCache throws it away rather than cache it. Kept in
+// localStorage so it also covers a write made from another tab (the player
+// and the Stash pages each load their own copy of this module).
+const GEN_KEY = 'stash-multiview-queue-gen';
+let localGen = 0;
+function writeGen() {
+    let shared = null;
+    try { shared = localStorage.getItem(GEN_KEY); } catch {}
+    return `${shared}:${localGen}`;
+}
+function bumpWriteGen() {
+    localGen++;
+    try { localStorage.setItem(GEN_KEY, `${Date.now()}-${Math.random()}`); } catch {}
+}
+
+// Writes from this page run one at a time. Each reads the config, changes
+// it and writes the whole map back, so two that overlapped would both read
+// the same queue and the second would undo the first.
+let writeChain = Promise.resolve();
+
 // Read-modify-write the queue. `mutator(items)` gets a copy of the live queue
 // and returns the new one, or null to change nothing. With `verify`, the
 // queue is read back after writing and the change re-applied (up to 4 tries)
 // until `verify(queue)` holds, since a concurrent writer elsewhere could have
 // overwritten it. Returns the queue as last seen, and caches it; on a network
 // failure returns the cached copy unchanged.
-export async function mutateQueue(mutator, { verify } = {}) {
+export function mutateQueue(mutator, opts) {
+    // Counted before waiting for earlier writes, so a poll skips from the
+    // moment the change is asked for.
     pendingWrites++;
+    bumpWriteGen();
+    const run = writeChain.then(() => runMutation(mutator, opts));
+    writeChain = run;
+    return run.finally(() => {
+        bumpWriteGen();
+        pendingWrites--;
+    });
+}
+
+async function runMutation(mutator, { verify } = {}) {
     try {
         for (let attempt = 0; attempt < 4; attempt++) {
             const map = await fetchPluginConfig();
@@ -89,15 +123,18 @@ export async function mutateQueue(mutator, { verify } = {}) {
         return latest;
     } catch {
         return cachedQueue();
-    } finally {
-        pendingWrites--;
     }
 }
 
 // Refresh the cached queue from the config. Returns true if it changed.
+// Does nothing, and returns false, if a write started or ended while the
+// config was being read: the queue read could be from before that write.
 export async function refreshQueueCache() {
+    if (pendingWrites > 0) return false;
+    const gen = writeGen();
     try {
         const q = await fetchQueue();
+        if (pendingWrites > 0 || writeGen() !== gen) return false;
         let current = null;
         try { current = localStorage.getItem(CACHE_KEY); } catch {}
         if (JSON.stringify(q) === current) return false;

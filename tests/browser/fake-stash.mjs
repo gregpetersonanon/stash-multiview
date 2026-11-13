@@ -10,6 +10,9 @@
 //   and the plugin's Stash-side script.
 // - /__log returns the GraphQL calls seen so far and the current config.
 //   Set QUEUE in the environment to choose the starting queue.
+// - Set GQL_DELAY_MS to hold each GraphQL reply that long, as a busy Stash
+//   would. The request is still handled when it arrives (a read sees the
+//   config as it is then), so overlapping requests can race.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -56,8 +59,11 @@ http.createServer((req, res) => {
         let data = '';
         req.on('data', c => { data += c; });
         req.on('end', () => {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ data: graphql(JSON.parse(data)) }));
+            const body = JSON.stringify({ data: graphql(JSON.parse(data)) });
+            setTimeout(() => {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(body);
+            }, Number(process.env.GQL_DELAY_MS) || 0);
         });
         return;
     }

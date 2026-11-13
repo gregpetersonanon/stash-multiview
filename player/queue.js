@@ -11,11 +11,26 @@ import { filterBackedCells, indexSavedQueue, queue, savedQueueIndex, seekBases, 
 
 // Re-resolve the wall from the current cache (shared by the storage
 // event + the config poll). Preserves currently-playing filter slots.
+//
+// One resync runs at a time, reading the cache when it starts. A call made
+// while one is running asks for another pass afterwards, which reads the
+// cache as it is then. Two resyncs running at once could finish out of
+// order, and the one that read the older queue would put back a pane that
+// had just been closed.
+let resyncRunning = null;
+let resyncAgain = false;
 export function resyncFromCache() {
-    resolveQueuePreserving(cachedQueue()).then(resolved => {
-        setQueue(resolved);
-        loadSceneMeta(queue).then(render);
-    });
+    if (resyncRunning) { resyncAgain = true; return resyncRunning; }
+    resyncRunning = (async () => {
+        do {
+            resyncAgain = false;
+            const resolved = await resolveQueuePreserving(cachedQueue());
+            setQueue(resolved);
+            await loadSceneMeta(queue);
+            render();
+        } while (resyncAgain);
+    })().catch(() => {}).finally(() => { resyncRunning = null; });
+    return resyncRunning;
 }
 // Up to `count` random scene ids matching a filter slot.
 export async function fetchFilterCandidates(item, count) {
@@ -131,8 +146,15 @@ export function removeScene(id) {
     if (savedIdx != null) {
         for (const [k, v] of savedQueueIndex) if (v > savedIdx) savedQueueIndex.set(k, v - 1);
     }
-    // Persist the removal to config (RMW) so other clients see it.
-    mutateQueue(dropItem);
+    // A resync already under way read the queue before this removal and
+    // would put the pane back; have it run again once it finishes.
+    if (resyncRunning) resyncAgain = true;
+    // Persist the removal to config (RMW) so other clients see it. For a
+    // scene id, read it back and redo the removal if another client's write
+    // landed on top of it. Then redraw from what was saved, which also shows
+    // anything another client added meanwhile.
+    mutateQueue(dropItem, filterItem ? {} : { verify: items => !items.includes(id) })
+        .then(() => resyncFromCache());
     unmutedIds.delete(String(id));
     filterBackedCells.delete(String(id));
     disconnectAudio(id);
