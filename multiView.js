@@ -118,7 +118,7 @@
             if (items.length >= MAX_QUEUE) return null;
             items.push({ type: 'filter', filter: f });
             return items;
-        });
+        }, { label: 'add filter slot' });
     }
 
     function isQueued(id) {
@@ -142,7 +142,7 @@
             if (want) { if (items.length >= MAX_QUEUE) return null; items.push(id); }
             else { const k = items.indexOf(id); if (k >= 0) items.splice(k, 1); }
             return items;
-        }, { verify: after => after.includes(id) === want });
+        }, { label: (want ? 'add ' : 'remove ') + id, verify: after => after.includes(id) === want });
     }
 
     // ── Picking Toggle Button ──────────────────────────────────────────────
@@ -318,7 +318,7 @@
             // First press clears the queue; with an already-empty queue the
             // X dismisses the launcher by disabling picking mode.
             document.getElementById('mv-clear-queue').addEventListener('click', () => {
-                if (getQueue().length > 0) mutateConfigQueue(() => []);
+                if (getQueue().length > 0) mutateConfigQueue(() => [], { label: 'clear queue' });
                 else togglePickingMode();
             });
         }

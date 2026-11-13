@@ -1,7 +1,7 @@
 import { disconnectAudio } from './audio.js';
 import { buildSceneFilter } from './filters.js';
 import { clearResumeTime } from './progress.js';
-import { cacheQueue, cachedQueue, mutateQueue } from './queue-store.js';
+import { cacheQueue, cachedQueue, mutateQueue, queueLog } from './queue-store.js';
 import { render } from './render.js';
 import { loadSceneMeta } from './scenes-api.js';
 import { seekToStart } from './seek.js';
@@ -19,17 +19,30 @@ import { filterBackedCells, indexSavedQueue, queue, savedQueueIndex, seekBases, 
 // had just been closed.
 let resyncRunning = null;
 let resyncAgain = false;
-export function resyncFromCache() {
+// `reason` says what asked for the resync, for the diagnostic log: a pane
+// appearing or vanishing is logged with it.
+let resyncReasons = [];
+export function resyncFromCache(reason = 'unknown') {
+    resyncReasons.push(reason);
     if (resyncRunning) { resyncAgain = true; return resyncRunning; }
     resyncRunning = (async () => {
         do {
             resyncAgain = false;
+            const reasons = resyncReasons;
+            resyncReasons = [];
+            const before = new Set(queue);
             const resolved = await resolveQueuePreserving(cachedQueue());
             setQueue(resolved);
             await loadSceneMeta(queue);
             render();
+            const opened = queue.filter(id => !before.has(id));
+            const closed = [...before].filter(id => !queue.includes(id));
+            if (opened.length || closed.length) {
+                queueLog('panes-changed', { reasons: [...new Set(reasons)], opened, closed, panes: queue.slice() });
+            }
         } while (resyncAgain);
-    })().catch(() => {}).finally(() => { resyncRunning = null; });
+    })().catch(e => { queueLog('resync-failed', { error: String(e && e.message || e) }); })
+        .finally(() => { resyncRunning = null; });
     return resyncRunning;
 }
 // Up to `count` random scene ids matching a filter slot.
@@ -153,8 +166,10 @@ export function removeScene(id) {
     // scene id, read it back and redo the removal if another client's write
     // landed on top of it. Then redraw from what was saved, which also shows
     // anything another client added meanwhile.
-    mutateQueue(dropItem, filterItem ? {} : { verify: items => !items.includes(id) })
-        .then(() => resyncFromCache());
+    queueLog('close', { id, filterSlot: !!filterItem, panes: queue.slice() });
+    const label = 'close ' + id + (filterItem ? ' (filter slot)' : '');
+    mutateQueue(dropItem, filterItem ? { label } : { label, verify: items => !items.includes(id) })
+        .then(() => resyncFromCache('after close ' + id));
     unmutedIds.delete(String(id));
     filterBackedCells.delete(String(id));
     disconnectAudio(id);

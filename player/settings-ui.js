@@ -1,6 +1,7 @@
 import { ICON_REMOVE } from './icons.js';
 import { KEYBIND_ACTIONS, keyLabel, normalizeKey } from './keybinds.js';
 import { applyLoopState, clearAllLoops, loopCount } from './loops.js';
+import { clearQueueLog, readQueueLog } from './queue-store.js';
 import { applyQualityToAllCells } from './render.js';
 import { SEEK_MODIFIERS, SEEK_STEP_MAX } from './seek.js';
 import { GRID_ROWS, QUALITY_OPTIONS, clampStep, playerSettings, savePlayerSettings } from './settings.js';
@@ -161,6 +162,24 @@ export function openSettingsModal() {
         loopClearBtn.disabled = true;
     });
     loopRow.append(loopText, loopClearBtn);
+
+    // Queue diagnostic log (queue-store.js queueLog).
+    const logRow = document.createElement('div');
+    logRow.className = 'mv-settings-dp-row';
+    const logText = document.createElement('div');
+    logText.className = 'mv-settings-dp-text';
+    const logLbl = document.createElement('span');
+    logLbl.className = 'mv-settings-dp-label';
+    logLbl.textContent = 'Queue Log';
+    const logDesc = document.createElement('span');
+    logDesc.className = 'mv-settings-dp-desc';
+    logDesc.textContent = `${readQueueLog().length} entries. Every queue change and where it came from, for tracking down panes that come back.`;
+    logText.append(logLbl, logDesc);
+    const logViewBtn = document.createElement('button');
+    logViewBtn.className = 'mv-keybind-btn';
+    logViewBtn.textContent = 'View';
+    logViewBtn.addEventListener('click', openQueueLogModal);
+    logRow.append(logText, logViewBtn);
 
     // Collapsible section, chevron and all. Returns the <details> to append
     // and the body rows go into `.rows`.
@@ -368,9 +387,74 @@ export function openSettingsModal() {
         });
     });
 
-    card.append(header, dpRow, swRow, invRow, volRow, loopRow, seekSection, qualSection, kbSection);
+    card.append(header, dpRow, swRow, invRow, volRow, loopRow, logRow, seekSection, qualSection, kbSection);
     overlay.appendChild(card);
     overlay.addEventListener('click', e => { if (e.target === overlay) closeSettingsModal(); });
+    document.body.appendChild(overlay);
+}
+
+// One log entry per line, newest first:
+//   15:24:54.123  player#a1b2  close  id=48129 filterSlot=false ...
+function formatQueueLog(entries) {
+    return entries.slice().reverse().map(e => {
+        const d = new Date(e.t);
+        const time = d.toLocaleTimeString([], { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+        const rest = Object.entries(e)
+            .filter(([k]) => k !== 't' && k !== 'src' && k !== 'ev')
+            .map(([k, v]) => k + '=' + (typeof v === 'string' ? v : JSON.stringify(v)))
+            .join(' ');
+        return `${time}  ${e.src}  ${e.ev}  ${rest}`;
+    }).join('\n');
+}
+
+function openQueueLogModal() {
+    document.getElementById('mv-queue-log-modal')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'mv-queue-log-modal';
+    const card = document.createElement('div');
+    card.className = 'mv-settings-card';
+    card.style.maxWidth = 'min(1100px, 95vw)';
+    card.style.width = '95vw';
+
+    const header = document.createElement('div');
+    header.className = 'mv-settings-header';
+    const title = document.createElement('span');
+    title.className = 'mv-settings-title';
+    title.textContent = 'Queue Log';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'mv-settings-close';
+    closeBtn.innerHTML = ICON_REMOVE;
+    closeBtn.title = 'Close';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    header.append(title, closeBtn);
+
+    const pre = document.createElement('pre');
+    pre.style.cssText = 'max-height:65vh;overflow:auto;font-size:11px;line-height:1.45;white-space:pre-wrap;word-break:break-all;margin:8px 0;user-select:text';
+    const refresh = () => {
+        const entries = readQueueLog();
+        pre.textContent = entries.length ? formatQueueLog(entries) : 'Nothing logged yet.';
+    };
+    refresh();
+
+    const buttons = document.createElement('div');
+    buttons.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+    const mk = (label, fn) => {
+        const b = document.createElement('button');
+        b.className = 'mv-keybind-btn';
+        b.textContent = label;
+        b.addEventListener('click', fn);
+        return b;
+    };
+    const copyBtn = mk('Copy', () => {
+        navigator.clipboard?.writeText(pre.textContent).then(
+            () => { copyBtn.textContent = 'Copied'; },
+            () => { copyBtn.textContent = 'Copy failed'; });
+    });
+    buttons.append(mk('Refresh', refresh), copyBtn, mk('Clear', () => { clearQueueLog(); refresh(); }));
+
+    card.append(header, pre, buttons);
+    overlay.appendChild(card);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     document.body.appendChild(overlay);
 }
 

@@ -30,7 +30,7 @@ function registerSyncListeners() {
     // Same-origin cross-tab: the local cache changed in another tab.
     window.addEventListener('storage', e => {
         if (!isQueueCacheEvent(e)) return;
-        resyncFromCache();
+        resyncFromCache('another tab changed the queue');
     });
 
     // Cross-CLIENT: the queue can change from the Stash scene-list plugin,
@@ -40,11 +40,11 @@ function registerSyncListeners() {
     // write is in flight so it can't revert it.
     setInterval(async () => {
         if (document.visibilityState !== 'visible' || pendingWrites > 0) return;
-        if (await refreshQueueCache()) resyncFromCache();
+        if (await refreshQueueCache()) resyncFromCache('poll');
     }, 5000);
     document.addEventListener('visibilitychange', async () => {
         if (document.visibilityState !== 'visible' || pendingWrites > 0) return;
-        if (await refreshQueueCache()) resyncFromCache();
+        if (await refreshQueueCache()) resyncFromCache('tab became visible');
     });
 }
 

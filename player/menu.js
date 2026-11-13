@@ -43,13 +43,13 @@ export async function loadRoulette(count, mode = 'replace') {
                     items.push({ type: 'filter', filter: {} });
                 }
                 return items;
-            });
+            }, { label: 'roulette add ' + ids.length });
         } else {
             ids = ids.slice(0, want);
             if (!ids.length) return;
             // Replace is a deliberate full reset of the queue to fresh
             // random filter slots.
-            await mutateQueue(() => ids.map(() => ({ type: 'filter', filter: {} })));
+            await mutateQueue(() => ids.map(() => ({ type: 'filter', filter: {} })), { label: 'roulette replace ' + ids.length });
             filterBackedCells.clear();
             ids.forEach(id => filterBackedCells.set(id, rouletteFilter));
             indexSavedQueue(ids);

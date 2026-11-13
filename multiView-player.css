@@ -669,7 +669,8 @@ body.mv-idle .mv-cell:hover:not(.mv-popup-open) .mv-seekbar {
 
 /* ── Settings modal ────────────────────────────────────────────────────────── */
 
-#mv-settings-modal {
+#mv-settings-modal,
+#mv-queue-log-modal {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.7);
@@ -1115,4 +1116,9 @@ body.mv-focus .mv-seekbar {
 }
 body.mv-focus .mv-cell:hover .mv-seekbar {
     display: block;
+}
+
+/* Queue log viewer opens over the settings window */
+#mv-queue-log-modal {
+    z-index: 210;
 }

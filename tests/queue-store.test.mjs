@@ -131,3 +131,54 @@ test('a refresh started while a write is in flight does nothing', async () => {
     await write;
     assert.deepEqual(store.cachedQueue(), ['1', '2']);
 });
+
+// ── Diagnostic log ───────────────────────────────────────────────────────
+
+const events = () => store.readQueueLog().map(e => e.ev);
+
+test('the log records a write with its label and what it changed', async () => {
+    config = { queue: '["1","2"]' };
+    await store.mutateQueue(q => q.filter(id => id !== '1'), { label: 'close 1', verify: q => !q.includes('1') });
+    const [entry] = store.readQueueLog();
+    assert.equal(entry.ev, 'write');
+    assert.equal(entry.label, 'close 1');
+    assert.deepEqual(entry.removed, ['1']);
+    assert.deepEqual(entry.queue, ['2']);
+    assert.match(entry.src, /^stash-page#/);   // no /plugin/ path under node
+});
+
+test('a failed write is logged, and the poll that restores the queue is not blamed on outside', async () => {
+    config = { queue: '["1","2"]' };
+    store.cacheQueue(['1', '2']);
+    // the close drops "1" from the cache first, as the player does
+    store.cacheQueue(['2']);
+    failNext = true;
+    await store.mutateQueue(q => q.filter(id => id !== '1'), { label: 'close 1' });
+    assert.ok(await store.refreshQueueCache());          // config still has "1"
+    assert.deepEqual(events(), ['write-failed', 'poll-changed']);
+    const poll = store.readQueueLog()[1];
+    assert.deepEqual(poll.added, ['1']);
+    assert.equal(poll.fromOutside, false);               // a write from here just ended
+});
+
+test('a poll change with no recent write from this browser is flagged as from outside', async () => {
+    config = { queue: '["2","1"]' };
+    store.cacheQueue(['2']);
+    assert.ok(await store.refreshQueueCache());
+    const [poll] = store.readQueueLog();
+    assert.equal(poll.ev, 'poll-changed');
+    assert.deepEqual(poll.added, ['1']);
+    assert.equal(poll.fromOutside, true);
+});
+
+test('repeated poll failures are logged once, and the log is capped', async () => {
+    failNext = true; await store.refreshQueueCache();
+    failNext = true; await store.refreshQueueCache();
+    assert.deepEqual(events(), ['poll-failed']);
+    for (let i = 0; i < 450; i++) store.queueLog('x', { i });
+    const log = store.readQueueLog();
+    assert.equal(log.length, 400);
+    assert.equal(log[log.length - 1].i, 449);
+    store.clearQueueLog();
+    assert.deepEqual(store.readQueueLog(), []);
+});
